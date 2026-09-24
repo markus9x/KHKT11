@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Mind Math — Không gian Toán học khoa học</title>
+<meta name="description" content="Mind Math — workspace toán học khoa học cho nghiên cứu phổ thông: đại số, đồ thị, bảng, trang tính." />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%238b5cf6'/%3E%3Cstop offset='.55' stop-color='%2338bdf8'/%3E%3Cstop offset='1' stop-color='%23e879f9'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect x='2' y='2' width='44' height='44' rx='13' fill='%23171344'/%3E%3Crect x='2' y='2' width='44' height='44' rx='13' fill='none' stroke='url(%23g)' stroke-width='2.5'/%3E%3Cpath d='M10 30c4-1 5-6 8-6s3 5 6 5 4-9 7-9 3 4 5 4' fill='none' stroke='url(%23g)' stroke-width='2.6' stroke-linecap='round'/%3E%3Ccircle cx='33' cy='15' r='2.6' fill='%23e879f9'/%3E%3C/svg%3E" />
+<link rel="stylesheet" href="./styles.css" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" />
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+</head>
+<body data-theme="light">
+<div class="app" id="app">
+
+  <!-- ================= HEADER ================= -->
+  <header class="topbar" role="banner">
+    <button class="icon-btn menu-btn" id="menuBtn" title="Menu" aria-label="Menu">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+    </button>
+
+    <a class="brand" href="#" aria-label="Mind Math trang chủ">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 48 48" width="34" height="34">
+          <defs>
+            <linearGradient id="brandGrad" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stop-color="#8b5cf6"/><stop offset=".55" stop-color="#38bdf8"/><stop offset="1" stop-color="#e879f9"/>
+            </linearGradient>
+            <radialGradient id="brandGlow" cx=".5" cy=".42" r=".75">
+              <stop offset="0" stop-color="#8b5cf6" stop-opacity=".55"/><stop offset="1" stop-color="#8b5cf6" stop-opacity="0"/>
+            </radialGradient>
+          </defs>
+          <rect x="2" y="2" width="44" height="44" rx="13" fill="#171344"/>
+          <rect x="2" y="2" width="44" height="44" rx="13" fill="url(#brandGlow)"/>
+          <rect x="2.8" y="2.8" width="42.4" height="42.4" rx="12" fill="none" stroke="url(#brandGrad)" stroke-width="2"/>
+          <!-- brain-circuit + curve motif -->
+          <path d="M10 30c4-1 5-6 8-6s3 5 6 5 4-9 7-9 3 4 5 4" fill="none" stroke="url(#brandGrad)" stroke-width="2.6" stroke-linecap="round"/>
+          <circle cx="15.5" cy="19" r="1.7" fill="#38bdf8"/>
+          <circle cx="24" cy="15.5" r="1.7" fill="#8b5cf6"/>
+          <circle cx="33" cy="15" r="2.5" fill="#e879f9"/>
+          <circle cx="33" cy="15" r="4.4" fill="none" stroke="#e879f9" stroke-opacity=".45" stroke-width="1.2"/>
+          <path d="M15.5 19 24 15.5 33 15" stroke="#a5b4fc" stroke-opacity=".6" stroke-width="1.1"/>
+        </svg>
+      </span>
+      <span class="brand-text">
+        <span class="brand-name">Mind<strong>Math</strong></span>
+        <span class="brand-sub">Không gian Toán học khoa học</span>
+      </span>
+    </a>
+
+    <span class="workspace-badge" title="Không gian làm việc hiện tại">
+      <span class="badge-dot"></span>
+      Workspace · Đồ thị &amp; Đại số
+    </span>
+
+    <div class="topbar-spacer"></div>
+
+    <div class="topbar-actions">
+      <div class="theme-switch" id="themeSwitch" role="group" aria-label="Chế độ sáng tối">
+        <button data-theme-btn="light" class="is-active" title="Light mode — nền trắng">☀ Light</button>
+        <button data-theme-btn="dark" title="Dark mode — nền đen">🌙 Dark</button>
+      </div>
+      <button class="icon-btn" id="undoBtn" title="Hoàn tác (Ctrl+Z)" aria-label="Hoàn tác">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></svg>
+      </button>
+      <button class="icon-btn" id="redoBtn" title="Làm lại (Ctrl+Y)" aria-label="Làm lại">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 14 5-5-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h3"/></svg>
+      </button>
+      <button class="pill-btn ghost" id="shareBtn">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 10.5 6.8-4M8.6 13.5l6.8 4"/></svg>
+        Chia sẻ
+      </button>
+      <button class="pill-btn primary" id="presentBtn">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+        Trình bày
+      </button>
+      <button class="avatar-btn" id="avatarBtn" title="Tài khoản" aria-label="Tài khoản">KH</button>
+    </div>
+  </header>
+
+  <!-- ================= WORKSPACE ================= -->
+  <div class="workspace">
+
+    <!-- LEFT RAIL -->
+    <nav class="rail" aria-label="Điều hướng chính">
+      <button class="rail-item is-active" data-view="algebra" aria-pressed="true">
+        <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="4" y="3" width="16" height="18" rx="2.5"/><path d="M8 7h8M8 11h3M14 11h2M8 15h2M13 15h3M8 19h8"/></svg>
+        <span>Đại số</span>
+      </button>
+      <button class="rail-item" data-view="tools" aria-pressed="false">
+        <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 6.5a4 4 0 0 0-5.6 4.8L4 16.2V20h3.8l4.9-4.9a4 4 0 0 0 4.8-5.6l-2.8 2.8-2.3-2.3 2.1-3.5Z"/></svg>
+        <span>Công cụ</span>
+      </button>
+      <button class="rail-item" data-view="table" aria-pressed="false">
+        <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="4" y="4" width="16" height="16" rx="2.5"/><path d="M4 9.5h16M4 14.5h16M9.5 9.5V20M14.5 9.5V20"/></svg>
+        <span>Bảng</span>
+      </button>
+      <button class="rail-item" data-view="sheet" aria-pressed="false">
+        <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="4" y="3" width="16" height="18" rx="2.5"/><path d="M8 3v18M4 8h4M4 13h4M4 18h4M12 8h8M12 13h8M12 18h8"/></svg>
+        <span>Trang tính</span>
+      </button>
+      <button class="rail-item" data-view="trig" aria-pressed="false" title="Đường tròn lượng giác">
+        <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="1.3" fill="currentColor" stroke="none"/><path d="M12 12 18.5 7.5"/><path d="M12 4v1.6M4 12h1.6M20 12h-1.6M12 20v-1.6"/><path d="M14.5 5.2a4.5 4.5 0 0 1 3.3 3.3"/></svg>
+        <span>Lượng giác</span>
+      </button>
+      <button class="rail-item markus-rail" data-view="markus" aria-pressed="false" title="Markus — trợ lý AI toán học">
+        <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><defs><linearGradient id="mkRail" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#38bdf8"/><stop offset=".5" stop-color="#8b5cf6"/><stop offset="1" stop-color="#e879f9"/></linearGradient></defs><path d="M12 2.5 13.8 9l6.7 3-6.7 3L12 21.5 10.2 15l-6.7-3 6.7-3Z" stroke="url(#mkRail)" fill="rgba(139,92,246,.18)"/><circle cx="12" cy="12" r="1.4" fill="url(#mkRail)" stroke="none"/></svg>
+        <span><em class="ai-badge">MARKUS</em></span>
+        <i class="markus-pulse" aria-hidden="true"></i>
+      </button>
+      <div class="rail-flex"></div>
+      <button class="rail-item" data-view="settings" aria-pressed="false">
+        <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.11-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.64 8.9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.01A1.7 1.7 0 0 0 10 3.09V3a2 2 0 1 1 4 0v.09c0 .68.4 1.3 1.01 1.55.6.26 1.3.11 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.01c.26.6.88 1 1.55 1H21a2 2 0 1 1 0 4h-.09c-.68 0-1.3.4-1.51 1Z"/></svg>
+        <span>Cài đặt</span>
+      </button>
+    </nav>
+
+    <!-- ALGEBRA / OBJECT PANEL -->
+    <aside class="panel algebra-panel" id="algebraPanel" aria-label="Bảng đại số">
+      <div class="panel-resizer" id="leftResizer" title="Kéo để nới rộng / thu hẹp" aria-label="Kéo để đổi độ rộng panel"></div>
+      <!-- VIEW: ALGEBRA -->
+      <section class="side-view is-visible" data-pane="algebra">
+        <div class="side-head">
+          <h2>Đối tượng đại số</h2>
+          <button class="mini-btn" id="addObjectBtn" title="Thêm đối tượng">＋ Thêm</button>
+        </div>
+        <div class="search-box">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          <input id="algebraSearch" type="text" placeholder="Tìm kiếm đối tượng…" autocomplete="off" />
+          <kbd>⌕</kbd>
+        </div>
+        <div class="object-list" id="objectList" role="list" aria-label="Danh sách biểu thức"></div>
+        <div class="side-foot">
+          <span id="objectCount">0 đối tượng</span>
+          <button class="link-btn" id="clearAllBtn">Xóa tất cả</button>
+        </div>
+      </section>
+
+      <!-- VIEW: TOOLS -->
+      <section class="side-view" data-pane="tools">
+        <div class="side-head"><h2>Công cụ dựng hình</h2></div>
+        <p class="side-desc">Chọn công cụ, sau đó thao tác trực tiếp trên mặt phẳng tọa độ.</p>
+        <div class="tool-grid" id="toolGrid">
+          <button class="tool-card is-active" data-tool="move"><i>➤</i><b>Di chuyển</b><span>Kéo / chọn đối tượng</span></button>
+          <button class="tool-card" data-tool="point"><i>•</i><b>Điểm</b><span>Nhấp để tạo điểm</span></button>
+          <button class="tool-card" data-tool="line"><i>╱</i><b>Đường thẳng</b><span>Hai điểm tạo đường</span></button>
+          <button class="tool-card" data-tool="circle"><i>○</i><b>Đường tròn</b><span>Tâm + bán kính</span></button>
+          <button class="tool-card" data-tool="extremum"><i>⌒</i><b>Cực trị</b><span>Tìm đỉnh / đáy</span></button>
+          <button class="tool-card" data-tool="root"><i>✕</i><b>Nghiệm</b><span>Giao với trục Ox</span></button>
+          <button class="tool-card" data-tool="intersect"><i>⨉</i><b>Giao điểm</b><span>Cắt hai đồ thị</span></button>
+          <button class="tool-card" data-tool="tangent"><i>／</i><b>Tiếp tuyến</b><span>Tại điểm chạm</span></button>
+        </div>
+        <div class="tip-box">Mẹo: dùng con lăn chuột để thu / phóng, kéo nền để di chuyển khung nhìn.</div>
+      </section>
+
+      <!-- VIEW: TABLE -->
+      <section class="side-view" data-pane="table">
+        <div class="side-head"><h2>Bảng giá trị</h2></div>
+        <p class="side-desc">Giá trị hàm số được chọn theo bước <b>0.5</b>.</p>
+        <label class="field-label" for="tableSelect">Hàm số</label>
+        <select id="tableSelect" class="select"></select>
+        <div class="table-wrap"><table class="value-table" id="valueTable">
+          <thead><tr><th>x</th><th>f(x)</th></tr></thead><tbody></tbody>
+        </table></div>
+      </section>
+
+      <!-- VIEW: SHEET -->
+      <section class="side-view" data-pane="sheet">
+        <div class="side-head"><h2>Trang tính</h2></div>
+        <p class="side-desc">Bảng tính mini — nhập số hoặc công thức bắt đầu bằng <b>=</b>.</p>
+        <div class="table-wrap"><table class="sheet" id="sheetTable">
+          <thead><tr><th></th><th>A</th><th>B</th><th>C</th></tr></thead>
+          <tbody></tbody>
+        </table></div>
+        <div class="tip-box">Ví dụ: <code>=A1*2+sin(A2)</code> — hỗ trợ sin, cos, sqrt, pi.</div>
+      </section>
+
+      <!-- VIEW: TRIG — Đường tròn lượng giác -->
+      <section class="side-view" data-pane="trig">
+        <div class="side-head"><h2>Đường tròn lượng giác</h2>
+          <button class="mini-btn" id="trigPlayBtn" title="Chạy / dừng góc quay">▶ Quay</button>
+        </div>
+        <p class="side-desc">Vòng tròn bán kính <b>R = 1</b> tâm O. Điểm M tạo góc α với Ox⁺: <b>M(cos α, sin α)</b>. Kéo thanh trượt hoặc bấm góc đặc biệt.</p>
+        <div class="trig-canvas-wrap">
+          <canvas id="trigCircle" width="520" height="520" aria-label="Đường tròn lượng giác tương tác"></canvas>
+        </div>
+        <div class="trig-angle-row">
+          <input type="range" id="trigSlider" min="0" max="360" step="1" value="30" aria-label="Góc alpha độ" />
+          <div class="trig-angle-inputs">
+            <label>α = <input type="number" id="trigDeg" value="30" step="0.5" />°</label>
+            <label><input type="number" id="trigRad" value="0.524" step="0.01" /> rad</label>
+          </div>
+        </div>
+        <div class="trig-values">
+          <div class="trig-val"><span>cos α</span><b id="trigCos">0.866</b></div>
+          <div class="trig-val"><span>sin α</span><b id="trigSin">0.500</b></div>
+          <div class="trig-val"><span>tan α</span><b id="trigTan">0.577</b></div>
+          <div class="trig-val"><span>cot α</span><b id="trigCot">1.732</b></div>
+        </div>
+        <div class="trig-exact" id="trigExact">α = 30° = π/6 · cos = √3/2 · sin = 1/2</div>
+        <div class="trig-special" id="trigSpecial">
+          <button data-deg="0">0°</button><button data-deg="30">30°</button><button data-deg="45">45°</button>
+          <button data-deg="60">60°</button><button data-deg="90">90°</button><button data-deg="120">120°</button>
+          <button data-deg="135">135°</button><button data-deg="150">150°</button><button data-deg="180">180°</button>
+          <button data-deg="210">210°</button><button data-deg="270">270°</button><button data-deg="315">315°</button>
+        </div>
+        <div class="trig-build">
+          <div class="trig-build-head">
+            <span>Vẽ đường tròn lượng giác</span>
+            <button class="mini-btn" id="trigBuildBtn" title="Vẽ dần vòng tròn + tia OM + sóng">▶ Vẽ dần</button>
+          </div>
+          <div class="trig-build-progress"><div class="trig-build-bar" id="trigBuildBar" style="width:100%"></div></div>
+          <div class="trig-wave-switch" role="group" aria-label="Chọn sóng sin hay cos">
+            <span>Sóng mini:</span>
+            <button data-wave="sin" class="is-active" title="Sóng hình sin">sin</button>
+            <button data-wave="cos" title="Sóng hình cos">cos</button>
+          </div>
+          <div class="tip-box trig-build-note">Nhập <b>radian ở trên</b> → vòng tròn + cos/sin/tan/cot bên cạnh đổi ngay. Bấm <b>Vẽ dần</b> để xem vòng tròn hiện từng đoạn.</div>
+        </div>
+        <div class="trig-actions">
+          <button class="mini-btn" id="trigAddSin">＋ sin(x) lên đồ thị</button>
+          <button class="mini-btn" id="trigAddCos">＋ cos(x) lên đồ thị</button>
+        </div>
+        <div class="tip-box">Mẹo: góc âm / &gt;360° vẫn đúng (tuần hoàn 2π). tan không xác định tại 90°+k180°, cot tại k180°.</div>
+      </section>
+
+      <!-- VIEW: MARKUS — trợ lý AI -->
+      <section class="side-view markus-pane" data-pane="markus">
+        <div class="markus-head">
+          <div class="markus-orb" aria-hidden="true"><span class="core"></span><span class="ring r1"></span><span class="ring r2"></span><span class="sat"></span></div>
+          <div class="markus-title">
+            <h2>Markus <em class="ai-badge big">AI</em></h2>
+            <span class="markus-sub">Trợ lý toán học</span>
+          </div>
+          <span class="markus-status" id="markusStatus"><i></i>online</span>
+          <button class="mini-btn markus-gear" id="markusSettingsBtn" title="Cài đặt Markus">⚙</button>
+        </div>
+        <div class="markus-context" id="markusContext" title="Bối cảnh đồ thị Markus đang thấy"></div>
+        <div class="markus-settings" id="markusSettings" hidden>
+          <label class="field-label" for="markusModel">Mô hình Gemini</label>
+          <select id="markusModel" class="select">
+            <option value="gemini-3.6-flash">gemini-3.6-flash — mới nhất, khuyên dùng</option>
+            <option value="gemini-3.5-flash">gemini-3.5-flash — ổn định</option>
+            <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite — siêu nhanh</option>
+          </select>
+          <label class="field-label" for="markusKey">API key (lưu trong trình duyệt này)</label>
+          <div class="markus-keyrow">
+            <input type="password" id="markusKey" class="select" autocomplete="off" spellcheck="false" />
+            <button class="chip-btn" id="markusKeyShow" title="Hiện / ẩn key">👁</button>
+          </div>
+          <div class="markus-settings-row">
+            <button class="mini-btn" id="markusTestBtn">Kiểm tra kết nối</button>
+            <button class="link-btn" id="markusClearBtn">Xóa hội thoại</button>
+          </div>
+          <div class="tip-box markus-note">Markus gọi thẳng <code>generativelanguage.googleapis.com</code> (native — key <code>AQ.</code> bắt buộc đi đường này). Mất mạng/key lỗi → Markus offline vẫn trả lời. ⚠️ Đừng public code khi còn key thật.</div>
+        </div>
+        <div class="markus-chat" id="markusChat" aria-live="polite"></div>
+        <div class="markus-chips" id="markusChips">
+          <button data-q="Giải thích đồ thị đang có trên màn hình.">Giải thích đồ thị</button>
+          <button data-q="Tìm nghiệm và cực trị của hàm đang chọn, rồi vẽ các điểm đó lên.">Tìm nghiệm + cực trị</button>
+          <button data-q="Vẽ giúp tôi mặt paraboloid và hình cầu bán kính 2.">Vẽ 3D mẫu</button>
+          <button data-q="Ra cho tôi 3 câu trắc nghiệm nhanh về đồ thị này.">Đố vui 3 câu</button>
+        </div>
+        <div class="markus-input-row">
+          <textarea id="markusInput" rows="1" placeholder="Hỏi Markus… (Enter gửi, Shift+Enter xuống dòng)"></textarea>
+          <button class="markus-send" id="markusSend" title="Gửi cho Markus">➤</button>
+        </div>
+      </section>
+
+      <!-- VIEW: SETTINGS -->
+      <section class="side-view" data-pane="settings">
+        <div class="side-head"><h2>Cài đặt khung nhìn</h2></div>
+        <div class="setting-row"><span>Chế độ nền đồ thị</span>
+          <div class="theme-switch small" id="themeSwitch2">
+            <button data-theme-btn="light" class="is-active">☀ Sáng</button>
+            <button data-theme-btn="dark">🌙 Tối</button>
+          </div>
+        </div>
+        <label class="setting-row"><span>Lưới chi tiết</span><input type="checkbox" id="setMinor" checked /></label>
+        <label class="setting-row"><span>Hiện nhãn trục</span><input type="checkbox" id="setLabels" checked /></label>
+        <label class="setting-row"><span>Hiệu ứng phát sáng</span><input type="checkbox" id="setGlow" checked /></label>
+        <label class="setting-row"><span>Sóng ánh sáng nền</span><input type="checkbox" id="setWave" checked /></label>
+        <label class="setting-row"><span>Lưới mặt 3D</span><input type="checkbox" id="setMesh3d" checked /></label>
+        <label class="setting-row"><span>Tự xoay 3D</span><input type="checkbox" id="setSpin3d" /></label>
+        <label class="setting-row col"><span>Mật độ lưới: <b id="gridVal">1.0</b></span><input type="range" id="setGrid" min="0.5" max="2" step="0.5" value="1" /></label>
+        <label class="setting-row col"><span>Độ dày đồ thị: <b id="thickVal">2.5</b></span><input type="range" id="setThick" min="1.5" max="4.5" step="0.5" value="2.5" /></label>
+        <label class="setting-row col"><span>Chi tiết 3D: <b id="q3Val">32</b></span><input type="range" id="setQuality3d" min="16" max="56" step="4" value="32" /></label>
+        <label class="setting-row"><span>Vẽ dần 2D / 3D</span><input type="checkbox" id="setAnimate" checked /></label>
+        <label class="setting-row col"><span>Tốc độ vẽ dần: <b id="animVal">1.4</b>s</span><input type="range" id="setAnimDur" min="0.4" max="3" step="0.2" value="1.4" /></label>
+        <button class="pill-btn primary block" id="replayAnimBtn">▶ Vẽ lại từ từ</button>
+        <button class="pill-btn primary block" id="resetViewBtn2">Đặt lại khung nhìn chuẩn</button>
+      </section>
+    </aside>
+
+    <!-- CENTER STAGE -->
+    <main class="stage" aria-label="Không gian làm việc trung tâm">
+      <div class="graph-wrap" id="graphWrap">
+        <canvas id="graph" aria-label="Mặt phẳng tọa độ tương tác"></canvas>
+        <div class="graph-vignette" aria-hidden="true"></div>
+
+        <div class="graph-hud top-left">
+          <div class="mode-switch" id="modeSwitch" role="group" aria-label="Chế độ 2D 3D">
+            <button data-mode="2d" class="is-active">2D</button>
+            <button data-mode="3d" title="Vẽ 3D: mặt z=f(x,y), điểm 3D">3D</button>
+          </div>
+          <span class="hud-chip" id="hudCoords">x: 0.00 · y: 0.00</span>
+          <span class="hud-chip dim" id="hudScale">tỉ lệ 48 px/đv</span>
+        </div>
+        <div class="graph-hud top-right">
+          <span class="hud-chip brand-chip">Mind Math · Engine</span>
+        </div>
+        <div class="view3d-bar" id="view3dBar" hidden>
+          <button data-v3="reset" title="Đặt lại góc nhìn 3D">⟲ Góc chuẩn</button>
+          <button data-v3="mesh" class="is-active" title="Bật/tắt lưới mặt">▦ Lưới</button>
+          <button data-v3="spin" title="Tự xoay (trình bày)">▶ Xoay</button>
+          <button data-v3="top" title="Nhìn từ trên">⬒ Top</button>
+          <span class="v3-hint">Kéo để xoay · Lăn chuột để zoom · Shift+kéo để di chuyển</span>
+        </div>
+
+        <div class="graph-toolbar" role="toolbar" aria-label="Công cụ khung nhìn">
+          <button data-act="pointer" class="is-active" title="Con trỏ / di chuyển"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M6 3l13 9-7 1.5L8.5 21 6 3z"/></svg></button>
+          <span class="tb-sep"></span>
+          <button data-act="zoom-in" title="Phóng to"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5M11 8v6M8 11h6"/></svg></button>
+          <button data-act="zoom-out" title="Thu nhỏ"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5M8 11h6"/></svg></button>
+          <button data-act="fullscreen" title="Toàn màn hình"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/></svg></button>
+          <button data-act="center" title="Căn giữa / đặt lại"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></button>
+          <span class="tb-sep"></span>
+          <button data-act="settings" title="Cài đặt đồ thị"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9 17 7M7 17l-2.1 2.1"/></svg></button>
+        </div>
+
+        <div class="trace-card" id="traceCard" hidden>
+          <b id="traceTitle">f(x)</b><span id="traceValue">—</span>
+        </div>
+        <div class="toast-stack" id="toastStack" aria-live="polite"></div>
+      </div>
+
+      <!-- COMMAND BAR -->
+      <div class="command-bar" role="search">
+        <span class="cmd-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m5 7 5 5-5 5M12 17h7"/></svg>
+        </span>
+        <input id="cmdInput" type="text" placeholder="2D: x^2-2, sin(x) · 3D: z=x^2+y^2, cube(3), sphere(2), cyl(1.5,3)" autocomplete="off" spellcheck="false" />
+        <button class="chip-btn" id="keyboardBtn" title="Bàn phím toán học">π √ ∑</button>
+        <button class="execute-btn" id="execBtn" title="Thực thi (Enter)">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+          Thực thi
+        </button>
+        <button class="icon-btn util" id="clearCmdBtn" title="Xóa dòng lệnh">✕</button>
+      </div>
+      <div class="math-keys" id="mathKeys" hidden>
+        <button data-k="sin(">sin</button><button data-k="cos(">cos</button><button data-k="tan(">tan</button>
+        <button data-k="sqrt(">√</button><button data-k="^">xʸ</button><button data-k="pi">π</button>
+        <button data-k="*">×</button><button data-k="/">÷</button><button data-k="(">(</button>
+        <button data-k=")">)</button><button data-k="abs(">∣x∣</button><button data-k="exp(">eˣ</button>
+      </div>
+
+      <!-- FEATURE CARDS -->
+      <div class="feature-row">
+        <button class="feature-card" data-demo="geometry">
+          <span class="f-icon g1"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="12" r="8"/><path d="M12 4v16M4 12h16"/></svg></span>
+          <span class="f-text"><b>Tạo hình học</b><i>Dựng điểm, đường, tròn trên mặt phẳng</i></span>
+          <span class="f-go">→</span>
+        </button>
+        <button class="feature-card" data-demo="analyze">
+          <span class="f-icon g2"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M3 19c3-1 4-7 7-7s3 5 6 5 4-9 5-9"/><path d="M3 21h18"/></svg></span>
+          <span class="f-text"><b>Phân tích hàm số</b><i>Cực trị, nghiệm, bảng biến thiên nhanh</i></span>
+          <span class="f-go">→</span>
+        </button>
+        <button class="feature-card" data-demo="solve">
+          <span class="f-icon g3"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M9 3H5a2 2 0 0 0-2 2v4M15 3h4a2 2 0 0 1 2 2v4M9 21H5a2 2 0 0 1-2-2v-4M15 21h4a2 2 0 0 0 2-2v-4"/><path d="m9 12 2 2 4-4"/></svg></span>
+          <span class="f-text"><b>Giải phương trình</b><i>Nhập f(x)=0 để dò nghiệm trực quan</i></span>
+          <span class="f-go">→</span>
+        </button>
+      </div>
+    </main>
+
+    <!-- RIGHT INSIGHT PANEL -->
+    <aside class="panel insight-panel" id="insightPanel" aria-label="Trợ lý nghiên cứu">
+      <button class="panel-toggle" id="insightToggle" title="Thu gọn panel phải" aria-label="Thu gọn panel phải">»</button>
+      <section class="insight-block accent">
+        <div class="ib-head"><span class="ib-dot"></span><h3>Dự án: Khám phá Toán học</h3></div>
+        <p>Đề tài KHKT: <b>trực quan hóa hàm số</b> trên mặt phẳng tọa độ tương tác — vẽ, phân tích và trình bày kết quả ngay trong <b>Mind Math</b>.</p>
+        <div class="progress"><div class="progress-bar" style="width:68%"></div></div>
+        <div class="progress-meta"><span>Tiến độ mô hình</span><b>68%</b></div>
+      </section>
+
+      <section class="insight-block">
+        <div class="ib-head"><h3>Hướng dẫn nhanh</h3></div>
+        <ol class="guide">
+          <li><b>1.</b> Nhập <code>x^2 - 2</code> vào ô lệnh, nhấn <b>Thực thi</b>.</li>
+          <li><b>2.</b> Kéo nền để di chuyển, lăn chuột để thu / phóng.</li>
+          <li><b>3.</b> Bật / tắt mắt để ẩn – hiện từng đồ thị.</li>
+          <li><b>4.</b> Mở tab <b>Bảng</b> để đọc giá trị f(x).</li>
+        </ol>
+      </section>
+
+      <section class="insight-block">
+        <div class="ib-head"><h3>Tính năng nổi bật</h3></div>
+        <ul class="feat-list">
+          <li><span class="tick">✓</span> Vẽ mượt nhiều đồ thị đồng thời</li>
+          <li><span class="tick">✓</span> Điểm, giao điểm &amp; nghiệm trực quan</li>
+          <li><span class="tick">✓</span> Bảng giá trị + trang tính mini</li>
+          <li><span class="tick">✓</span> Khung nhìn chuẩn cho thuyết trình</li>
+        </ul>
+      </section>
+
+      <section class="insight-block">
+        <div class="ib-head"><h3>Gợi ý khám phá</h3></div>
+        <div class="suggest-list" id="suggestList">
+          <button data-expr="sin(x)">sin(x) — sóng cơ bản</button>
+          <button data-expr="x^3 - 3*x">x³ − 3x — cực trị kép</button>
+          <button data-expr="sqrt(4 - x^2)">√(4 − x²) — nửa đường tròn</button>
+          <button data-expr="(2,3)">Điểm A(2, 3)</button>
+        </div>
+      </section>
+
+      <section class="insight-block">
+        <div class="ib-head"><h3>Khám phá 3D ⧉</h3></div>
+        <div class="suggest-list" id="suggestList3d">
+          <div class="suggest-group">Mặt cong</div>
+          <button data-expr="z = x^2 + y^2" data-goto3d="1">Paraboloid z=x²+y²</button>
+          <button data-expr="z = sin(sqrt(x^2+y^2))" data-goto3d="1">Sóng tròn sin(r)</button>
+          <button data-expr="z = x*y/4" data-goto3d="1">Mặt yên ngựa z=xy/4</button>
+          <div class="suggest-group">Khối cơ bản</div>
+          <div class="suggest-grid">
+            <button data-expr="cube(3)" data-goto3d="1">⬛ Lập phương 3</button>
+            <button data-expr="box(4,3,2)" data-goto3d="1">📦 Hộp 4×3×2</button>
+            <button data-expr="sphere(2)" data-goto3d="1">⚽ Cầu r=2</button>
+            <button data-expr="cyl(1.5,3)" data-goto3d="1">🛢️ Trụ r1.5 h3</button>
+            <button data-expr="cone(1.8,3)" data-goto3d="1">🔻 Nón r1.8 h3</button>
+            <button data-expr="pyramid(3,3)" data-goto3d="1">🔺 Chóp 3×h3</button>
+          </div>
+          <div class="suggest-group">Hình phẳng (nền z=0)</div>
+          <div class="suggest-grid">
+            <button data-expr="square(3)" data-goto3d="1">◼ Vuông 3</button>
+            <button data-expr="rect(4,2.5)" data-goto3d="1">▭ Chữ nhật 4×2.5</button>
+            <button data-expr="disk(2)" data-goto3d="1">● Tròn r=2</button>
+            <button data-expr="tri(3)" data-goto3d="1">▲ Tam giác 3</button>
+          </div>
+          <div class="suggest-group">Điểm</div>
+          <button data-expr="(1,2,3)" data-goto3d="1">Điểm 3D (1,2,3)</button>
+        </div>
+      </section>
+    </aside>
+    <button class="insight-expand" id="insightExpand" title="Mở panel phải" aria-label="Mở panel phải" hidden>«</button>
+  </div>
+
+  <!-- ATMOSPHERIC WAVE -->
+  <div class="atmosphere" id="atmosphere" aria-hidden="true">
+    <svg class="wave w1" viewBox="0 0 1440 120" preserveAspectRatio="none"><path d="M0,64 C240,96 420,16 720,48 C1020,80 1200,32 1440,64 L1440,120 L0,120 Z"/></svg>
+    <svg class="wave w2" viewBox="0 0 1440 120" preserveAspectRatio="none"><path d="M0,80 C260,40 480,104 760,72 C1040,40 1220,96 1440,72 L1440,120 L0,120 Z"/></svg>
+    <div class="glow-line"></div>
+  </div>
+</div>
+
+<script src="./app.js"></script>
+</body>
+</html>

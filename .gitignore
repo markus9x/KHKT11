@@ -1,0 +1,15 @@
+# OS / Editor
+.DS_Store
+Thumbs.db
+*.log
+
+# Microsoft Office temp / lock files
+~$*.docx
+~$*.doc
+~$*.xlsx
+*.tmp
+
+# Local dev
+node_modules/
+dist/
+.vscode/
