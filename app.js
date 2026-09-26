@@ -2,7 +2,7 @@
    MIND MATH — interactive scientific workspace engine
    - Canvas coordinate-plane renderer (pan / zoom / trace)
    - Expression parser: functions f(x), points, vertical lines, implicit f(x,y)=0
-   - Tools: move / point / line / circle / extremum / root / intersect / tangent
+   - Tools: move / point / line / circle (cụm Phân tích đã gỡ khỏi web)
    - Panels: algebra list, value table, mini sheet, settings
    No external dependencies. Vietnamese UI.
    ============================================================================ */
@@ -1371,26 +1371,8 @@ function handleToolClick3D(x, y, z) {
   } else if (state.tool === "line" || state.tool === "circle") {
     toast("Ở 3D hãy nhập phương trình mặt z=f(x,y) hoặc điểm (x,y,z).", undefined);
   } else {
-    // cực trị / nghiệm / giao điểm: chạy trên mặt đã chọn tại y hiện tại (cắt mặt bằng mặt phẳng y=const)
-    const sel = state.objects.find(o => o.id === state.selectedId && o.kind === "surface")
-             || state.objects.find(o => o.kind === "surface" && o.visible);
-    if (!sel) { toast("Hãy thêm một mặt z=f(x,y) trước.", "err"); return; }
-    const f1 = (xx) => { try { return sel.fn(xx, y); } catch { return NaN; } };
-    if (state.tool === "extremum" || state.tool === "root") {
-      const rs = state.tool === "root" ? findRoots(f1, -6, 6) : findExtrema(f1, -6, 6).map(p => p.x);
-      if (!rs.length) { toast("Không thấy điểm trên lát cắt y=" + round2(y)); return; }
-      rs.slice(0, 6).forEach(xx => {
-        try {
-          const zz = sel.fn(xx, y);
-          pushHistory(); state.seq += 1;
-          state.objects.push({ id: "o3" + Date.now().toString(36) + state.seq, name: `M${state.seq}(${round2(xx)},${round2(y)},${round2(zz)})`,
-            expr: `(${round2(xx)}, ${round2(y)}, ${round2(zz)})`, kind: "point3d", x: round2(xx), y: round2(y), z: round2(zz),
-            color: "#fbbf24", visible: true, error: null, born: state.opts.animate ? performance.now() : 0 });
-        } catch {}
-      });
-      renderList($("#algebraSearch").value); draw(); kickAnim(); persist();
-      toast(`Đã đánh dấu ${rs.length} điểm trên mặt ${sel.name} tại y=${round2(y)}`, "ok");
-    } else runToolAnalysis(state.tool);
+    // Cụm Phân tích đã gỡ khỏi web
+    return;
   }
 }
 
@@ -1418,12 +1400,15 @@ function handleToolClick(x, y) {
       draw();
     }
   } else {
-    runToolAnalysis(state.tool);
+    // Cụm Phân tích đã gỡ: không chạy runToolAnalysis từ click công cụ nữa
+    return;
   }
 }
 
 /* ---------------- toolbar / rail / panels ---------------- */
 function setTool(t) {
+  // Cụm Phân tích (extremum/root/intersect/tangent) đã gỡ khỏi web — ép về move
+  if (t === "extremum" || t === "root" || t === "intersect" || t === "tangent") t = "move";
   state.tool = t; state.pending = [];
   $$("#toolGrid .tool-card").forEach(b => b.classList.toggle("is-active", b.dataset.tool === t));
   $$(".graph-toolbar button").forEach(b => { if (b.dataset.act === "pointer") b.classList.toggle("is-active", t === "move"); });
@@ -1479,7 +1464,7 @@ function bindChrome() {
     const k = $("#mathKeys") || $("#geoKeyboard");
     if (k) k.hidden = !k.hidden;
   });
-  // Tabs bàn phím kiểu GeoGebra: 123 / f(x) / ABC / #&¬ (4 ảnh mẫu)
+  // Tabs bàn phím kiểu GeoGebra: 123 / ABC / #&¬
   $$(".geo-kb-tabs button").forEach(t => t.addEventListener("click", () => {
     $$(".geo-kb-tabs button").forEach(x => x.classList.toggle("is-active", x === t));
     $$(".geo-keyboard .kb-pane").forEach(p => p.classList.toggle("is-visible", p.dataset.paneKb === t.dataset.kb));

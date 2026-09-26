@@ -83,19 +83,19 @@
 
     <!-- LEFT RAIL -->
     <nav class="rail" aria-label="Điều hướng chính">
-      <button class="rail-item is-active" data-view="algebra" aria-pressed="true">
+      <button class="rail-item is-active" data-view="algebra" aria-pressed="true" title="Đại số">
         <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="4" y="3" width="16" height="18" rx="2.5"/><path d="M8 7h8M8 11h3M14 11h2M8 15h2M13 15h3M8 19h8"/></svg>
         <span>Đại số</span>
       </button>
-      <button class="rail-item" data-view="tools" aria-pressed="false">
+      <button class="rail-item" data-view="tools" aria-pressed="false" title="Công cụ">
         <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 6.5a4 4 0 0 0-5.6 4.8L4 16.2V20h3.8l4.9-4.9a4 4 0 0 0 4.8-5.6l-2.8 2.8-2.3-2.3 2.1-3.5Z"/></svg>
         <span>Công cụ</span>
       </button>
-      <button class="rail-item" data-view="table" aria-pressed="false">
+      <button class="rail-item" data-view="table" aria-pressed="false" title="Bảng giá trị">
         <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="4" y="4" width="16" height="16" rx="2.5"/><path d="M4 9.5h16M4 14.5h16M9.5 9.5V20M14.5 9.5V20"/></svg>
         <span>Bảng</span>
       </button>
-      <button class="rail-item" data-view="sheet" aria-pressed="false">
+      <button class="rail-item" data-view="sheet" aria-pressed="false" title="Trang tính">
         <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="4" y="3" width="16" height="18" rx="2.5"/><path d="M8 3v18M4 8h4M4 13h4M4 18h4M12 8h8M12 13h8M12 18h8"/></svg>
         <span>Trang tính</span>
       </button>
@@ -109,7 +109,7 @@
         <i class="markus-pulse" aria-hidden="true"></i>
       </button>
       <div class="rail-flex"></div>
-      <button class="rail-item" data-view="settings" aria-pressed="false">
+      <button class="rail-item" data-view="settings" aria-pressed="false" title="Cài đặt">
         <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.11-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.64 8.9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.01A1.7 1.7 0 0 0 10 3.09V3a2 2 0 1 1 4 0v.09c0 .68.4 1.3 1.01 1.55.6.26 1.3.11 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.01c.26.6.88 1 1.55 1H21a2 2 0 1 1 0 4h-.09c-.68 0-1.3.4-1.51 1Z"/></svg>
         <span>Cài đặt</span>
       </button>
@@ -145,7 +145,6 @@
         <div class="geo-keyboard" id="geoKeyboard">
           <div class="geo-kb-tabs" role="tablist" aria-label="Chế độ bàn phím">
             <button data-kb="123" class="is-active">123</button>
-            <button data-kb="fx">f(x)</button>
             <button data-kb="abc">ABC</button>
             <button data-kb="sym">#&amp;¬</button>
           </div>
@@ -159,16 +158,6 @@
             <button data-k="²" title="Bình phương">x²</button><button data-k="√(" title="Căn bậc 2">√</button><button data-k="e">e</button><button data-k="abs(" title="Trị tuyệt đối">|.|</button><button data-k="°" title="Độ → radian">°</button>
             <button data-k="<">&lt;</button><button data-k=">">&gt;</button><button data-k="≤">≤</button><button data-k="≥">≥</button><button data-k="ans" title="Kết quả trước">ans</button>
             <button data-act="left" title="Sang trái">‹</button><button data-act="right" title="Sang phải">›</button><button data-act="clear" title="Xóa hết">C</button><button data-act="enter" class="kb-enter" style="grid-column:span 2" title="Thực thi (Enter)">⏎</button>
-          </div>
-          <!-- f(x): hàm + CAS cơ bản — theo ảnh 2 -->
-          <div class="math-keys kb-pane kb-fx" data-pane-kb="fx">
-            <button data-k="sin(">sin</button><button data-k="cos(">cos</button><button data-k="tan(">tan</button><button data-k="%" title="Phần trăm">%</button><button data-act="back">⌫</button>
-            <button data-k="asin(" title="arcsin">sin⁻¹</button><button data-k="acos(" title="arccos">cos⁻¹</button><button data-k="atan(" title="arctan">tan⁻¹</button><button data-k="!" title="Giai thừa">!</button><button data-k="°" title="Độ">°</button>
-            <button data-k="ln(">ln</button><button data-k="log10(">log₁₀</button><button data-k="logb(" title="Log cơ số a: logb(x,a)">logₐ</button><button data-k="$" title="Hằng / tiền tệ">$</button><button data-k="{">{</button>
-            <button data-k="}">}</button><button data-k=";">;</button><button data-k=":=" title="Định nghĩa">:=</button><button data-k="d/dx(" title="Đạo hàm">d/dx</button><button data-k="int(" title="Nguyên hàm">∫</button>
-            <button data-k="i" title="Đơn vị ảo">i</button><button data-k="exp(" title="e mũ">eˣ</button><button data-k="10^(" title="10 mũ">10ˣ</button><button data-k="nroot(" title="Căn bậc n: nroot(x,n)">ⁿ√</button><button data-k="π">π</button>
-            <button data-k="x">x</button><button data-k="y">y</button><button data-k="e">e</button><button data-k="("> (</button><button data-k=")">)</button>
-            <button data-act="left">‹</button><button data-act="right">›</button><button data-act="clear">C</button><button data-act="enter" class="kb-enter" style="grid-column:span 2">⏎</button>
           </div>
           <!-- ABC: qwerty đầy đủ — theo ảnh 3 -->
           <div class="kb-pane kb-abc" data-pane-kb="abc">
@@ -208,15 +197,14 @@
       <section class="side-view" data-pane="tools">
         <div class="side-head"><h2>Công cụ dựng hình</h2></div>
         <p class="side-desc">Chọn công cụ, sau đó thao tác trực tiếp trên mặt phẳng tọa độ.</p>
-        <div class="tool-grid" id="toolGrid">
-          <button class="tool-card is-active" data-tool="move"><i>➤</i><b>Di chuyển</b><span>Kéo / chọn đối tượng</span></button>
-          <button class="tool-card" data-tool="point"><i>•</i><b>Điểm</b><span>Nhấp để tạo điểm</span></button>
-          <button class="tool-card" data-tool="line"><i>╱</i><b>Đường thẳng</b><span>Hai điểm tạo đường</span></button>
-          <button class="tool-card" data-tool="circle"><i>○</i><b>Đường tròn</b><span>Tâm + bán kính</span></button>
-          <button class="tool-card" data-tool="extremum"><i>⌒</i><b>Cực trị</b><span>Tìm đỉnh / đáy</span></button>
-          <button class="tool-card" data-tool="root"><i>✕</i><b>Nghiệm</b><span>Giao với trục Ox</span></button>
-          <button class="tool-card" data-tool="intersect"><i>⨉</i><b>Giao điểm</b><span>Cắt hai đồ thị</span></button>
-          <button class="tool-card" data-tool="tangent"><i>／</i><b>Tiếp tuyến</b><span>Tại điểm chạm</span></button>
+        <div id="toolGrid">
+          <div class="tool-group-label">Cơ bản</div>
+          <div class="tool-subgrid">
+            <button class="tool-card is-active" data-tool="move" title="Di chuyển — kéo / chọn đối tượng"><i>➤</i><b>Di chuyển</b></button>
+            <button class="tool-card" data-tool="point" title="Điểm mới — nhấp để tạo điểm"><i>•</i><b>Điểm mới</b></button>
+            <button class="tool-card" data-tool="line" title="Đường thẳng — hai điểm tạo đường"><i>╱</i><b>Đường thẳng</b></button>
+            <button class="tool-card" data-tool="circle" title="Đường tròn — tâm + bán kính"><i>○</i><b>Đường tròn</b></button>
+          </div>
         </div>
         <div class="tip-box">Mẹo: dùng con lăn chuột để thu / phóng, kéo nền để di chuyển khung nhìn.</div>
       </section>
