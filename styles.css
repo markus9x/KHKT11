@@ -9,7 +9,7 @@
   --text:#eef0ff; --muted:#a6a9d6; --dim:#7c7fae;
   --violet:#8b5cf6; --blue:#38bdf8; --magenta:#e879f9;
   --green:#34d399; --amber:#fbbf24; --red:#fb7185;
-  --r-sm:10px; --r-md:14px; --r-lg:18px; --r-xl:22px;
+  --r-sm:0; --r-md:0; --r-lg:0; --r-xl:0;
   --shadow:0 10px 32px rgba(5,3,20,.55);
   --glow:0 0 0 1px rgba(139,92,246,.38), 0 0 18px rgba(139,92,246,.35);
   --font:"Be Vietnam Pro","Inter","Segoe UI",system-ui,-apple-system,Roboto,"Helvetica Neue",Arial,sans-serif;
@@ -82,7 +82,7 @@ body::before{ /* faint starfield / lab dust */
   background:radial-gradient(circle at 30% 30%, #e879f9, #7c3aed 70%); color:#fff; font:700 12px var(--font)}
 
 /* ---------- workspace grid ---------- */
-.workspace{flex:1; display:grid; grid-template-columns:78px 302px minmax(0,1fr) 300px; gap:12px; padding:12px 14px 118px; min-height:0}
+.workspace{flex:1; display:grid; grid-template-columns:78px 302px minmax(0,1fr) 300px; gap:12px; padding:12px 14px; min-height:0}
 
 /* ---------- rail ---------- */
 .rail{
@@ -457,7 +457,7 @@ body[data-theme="light"] .trace-card span{color:#0f172a}
 .geo-keyboard .math-keys.is-visible{display:grid}
 .geo-keyboard .kb-pane{display:none; max-height:248px; overflow-y:auto}
 .geo-keyboard .kb-pane.is-visible{display:block}
-.geo-keyboard .kb-123.is-visible,.geo-keyboard .kb-fx.is-visible{display:grid}
+.geo-keyboard .kb-123.is-visible{display:grid}
 .geo-keyboard .kb-pane::-webkit-scrollbar,.geo-keyboard .math-keys::-webkit-scrollbar{width:6px}
 .geo-keyboard .kb-pane::-webkit-scrollbar-thumb,.geo-keyboard .math-keys::-webkit-scrollbar-thumb{background:rgba(139,92,246,.4); border-radius:6px}
 /* ABC qwerty kiểu GeoGebra ảnh 3 */
@@ -592,21 +592,73 @@ body.hide-left .algebra-panel{display:none}
 :focus-visible{outline:2px solid var(--blue); outline-offset:2px}
 ::selection{background:rgba(139,92,246,.5)}
 
+/* ============================================================
+   GEOGEBRA STYLE — bỏ bo góc + thanh tác vụ dồn 1 góc
+   - Mọi panel/nút/ô nhập vuông góc (giữ nguyên hình tròn: avatar, dot, orb)
+   - Rail trái gọn chỉ icon, toolbar đồ thị dồn góc phải-dưới
+   ============================================================ */
+.rail,.rail-item,
+.search-box,.search-box kbd,.obj,.obj-btns button,.empty-note,
+.tool-card,.tip-box,.tip-box code,.trig-canvas-wrap,
+.trig-angle-inputs input,.trig-val,.trig-exact,.trig-special button,
+.trig-build,.trig-wave-switch button,.ai-badge,.markus-head,
+.markus-context,.markus-settings,.markus-keyrow input,.markus-bubble,
+.markus-bubble code,.markus-drawcard,.markus-tex-card,.markus-chips button,
+.markus-input-row,.markus-send,.select,.table-wrap,.sheet td input:focus,
+.hud-chip,.mode-switch,.mode-switch button,
+.view3d-bar,.view3d-bar button,
+.trace-card,.toast,.command-bar,.chip-btn,.execute-btn,.math-keys,.math-keys button,
+.panel-toggle,.insight-expand,.insight-block,
+.guide code,.suggest-list button,.mini-btn,.link-btn,.geo-input-row,
+.geo-add-btn,.geo-clear,.geo-exec,.geo-hint,.geo-keyboard,.geo-kb-tabs button,
+.kb-pane button,.qb-key,.markus-status,.trig-build-progress,.trig-build-bar,
+.progress,.progress-bar,.side-view::-webkit-scrollbar-thumb,
+.object-list::-webkit-scrollbar-thumb,.table-wrap::-webkit-scrollbar-thumb,
+.markus-chat::-webkit-scrollbar-thumb,.insight-panel::-webkit-scrollbar-thumb,
+.geo-keyboard .kb-pane::-webkit-scrollbar-thumb,.geo-keyboard .math-keys::-webkit-scrollbar-thumb,
+.obj-dot,.sheet td,.value-table th,.markus-note code{border-radius:0 !important}
+
+/* rail gọn kiểu GeoGebra: chỉ icon, vuông, active tím đặc */
+.workspace{grid-template-columns:56px 302px minmax(0,1fr) 300px}
+.rail{padding:8px 6px; gap:4px}
+.rail-item{padding:9px 2px}
+.rail-item span{display:none}
+.rail-item.is-active{background:linear-gradient(135deg,#7c3aed,#4f46e5); border-color:rgba(255,255,255,.25); box-shadow:none}
+.markus-pulse{top:5px; right:6px}
+
+/* toolbar đồ thị dồn về góc phải-dưới */
+.graph-toolbar{right:10px; left:auto; top:auto; bottom:10px; transform:none}
+
+/* lưới công cụ gọn 4 cột kiểu GeoGebra */
+.tool-subgrid{display:grid; grid-template-columns:repeat(4,1fr); gap:6px; margin-bottom:4px}
+.tool-group-label{font:700 10.5px var(--font); color:var(--dim); text-transform:uppercase; letter-spacing:.6px; margin:8px 0 6px}
+.tool-group-label:first-child{margin-top:0}
+#toolGrid .tool-card{align-items:center; text-align:center; padding:9px 4px; gap:4px}
+#toolGrid .tool-card i{font-size:19px}
+#toolGrid .tool-card b{font-size:10px; line-height:1.25}
+
+/* nút + Thêm bo tròn, màu đậm nổi bật */
+#addObjectBtn{border-radius:999px !important; background:linear-gradient(135deg,#7c3aed,#4f46e5 60%,#0ea5e9);
+  color:#fff; border-color:rgba(255,255,255,.25); font-weight:800; padding:8px 14px;
+  box-shadow:0 0 0 1px rgba(139,92,246,.5), 0 4px 16px rgba(124,58,237,.6)}
+#addObjectBtn:hover{filter:brightness(1.12); background:linear-gradient(135deg,#7c3aed,#4f46e5 60%,#0ea5e9);
+  box-shadow:0 0 0 1px rgba(139,92,246,.7), 0 4px 22px rgba(124,58,237,.8)}
+
 /* ---------- responsive ---------- */
 @media (max-width:1240px){
-  .workspace{grid-template-columns:70px 270px minmax(0,1fr); padding-bottom:130px}
-  body.hide-insight .workspace{grid-template-columns:70px 270px minmax(0,1fr)}
+  .workspace{grid-template-columns:56px 270px minmax(0,1fr)}
+  body.hide-insight .workspace{grid-template-columns:56px 270px minmax(0,1fr)}
   .insight-panel{display:none}
   .panel-toggle,.insight-expand{display:none}
-  body.hide-left .workspace{grid-template-columns:70px minmax(0,1fr)}
+  body.hide-left .workspace{grid-template-columns:56px minmax(0,1fr)}
 }
 @media (max-width:920px){
   body{overflow:auto}
   .app{height:auto; min-height:100vh}
-  .workspace{grid-template-columns:64px minmax(0,1fr); grid-auto-rows:min-content}
-  body.hide-insight .workspace{grid-template-columns:64px minmax(0,1fr)}
-  body.hide-left .workspace{grid-template-columns:64px minmax(0,1fr)}
-  body.hide-left.hide-insight .workspace{grid-template-columns:64px minmax(0,1fr)}
+  .workspace{grid-template-columns:52px minmax(0,1fr); grid-auto-rows:min-content}
+  body.hide-insight .workspace{grid-template-columns:52px minmax(0,1fr)}
+  body.hide-left .workspace{grid-template-columns:52px minmax(0,1fr)}
+  body.hide-left.hide-insight .workspace{grid-template-columns:52px minmax(0,1fr)}
   .algebra-panel{order:2; grid-column:2; max-height:340px}
   .stage{grid-column:2; min-height:560px}
   .workspace-badge{display:none}
