@@ -15,6 +15,11 @@ const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const PALETTE = ["#8b5cf6", "#38bdf8", "#e879f9", "#34d399", "#fbbf24", "#fb7185", "#a5b4fc", "#22d3ee"];
 const FN_NAMES = ["asin", "acos", "atan", "sinh", "cosh", "tanh", "sin", "cos", "tan", "sqrt", "cbrt", "abs", "exp", "floor", "ceil", "round", "sign", "log10"];
+/* helpers toàn cục cho bàn phím GeoGebra — new Function() vẫn nhìn thấy */
+function fact(n) { n = Math.floor(Number(n)); if (!isFinite(n) || n < 0 || n > 170) return NaN; let r = 1; for (let i = 2; i <= n; i++) r *= i; return r; }
+function logb(x, b) { const bb = (b === undefined ? 10 : Number(b)); try { return Math.log(Number(x)) / Math.log(bb); } catch { return NaN; } }
+function nroot(x, n) { const nn = (n === undefined ? 2 : Number(n)); try { if (nn === 2) return Math.sqrt(Number(x)); return Math.sign(Number(x)) * Math.pow(Math.abs(Number(x)), 1 / nn); } catch { return NaN; } }
+try { globalThis.fact = fact; globalThis.logb = logb; globalThis.nroot = nroot; } catch {}
 
 function toast(msg, kind) {
   const stack = $("#toastStack");
@@ -29,21 +34,62 @@ function toast(msg, kind) {
 
 /* ---------------- math expression compiler ----------------
    Compiles a user string into JS. Returns { js, vars }.
-   - normalises unicode operators
+   - chuẩn hoá Unicode kiểu GeoGebra (≤ ≥ ≠ ∞ ² √ ± ° % ! ∧∨¬ Hy Lạp…)
    - inserts explicit multiplication (2x -> 2*x)
    - maps names to Math.* ; pi -> Math.PI ; lone e -> Math.E               */
 function compileScalar(src) {
   let s = String(src).trim();
-  s = s.replace(/π/g, "pi").replace(/÷/g, "/").replace(/×/g, "*").replace(/−/g, "-");
+  /* --- kiểm tra CAS nâng cao trước để báo lỗi thân thiện (tiếng Việt) --- */
+  if (/d\s*\/\s*dx|∫|∮|∬|∂/i.test(s)) throw new Error("Ký hiệu đạo hàm / tích phân (d/dx, ∫) là CAS nâng cao — hãy nhập hàm kết quả để vẽ, vd: 2*x thay vì d/dx x^2.");
+  if (/(^|[^a-zA-Z])i([^a-zA-Z]|$)/.test(s.replace(/\b(sin|cos|tan|asin|acos|atan|sinh|cosh|pi)\b/gi, ""))) {
+    if (/\bi\b/.test(s)) throw new Error("Số ảo i chưa vẽ được trên đồ thị thực — hãy dùng phần thực / mô-đun.");
+  }
+  if (/[∀∃∈∉⊂⊆⊃⊇∥⊥∠⊗→⇒⇔]/.test(s)) throw new Error("Ký hiệu logic / tập hợp (∀ ∃ ∈ ⊂ ∥ ⊥ ∠ →) chưa vẽ được — hãy nhập phương trình f(x,y)=0.");
+  if (/\bint\b|\bsum\b/.test(s)) throw new Error("Ký hiệu ∫ / Σ là CAS nâng cao — hãy nhập hàm kết quả để vẽ.");
+  if (/[{}]/.test(s)) throw new Error("Dấu { } là ký hiệu tập hợp — hãy dùng ( ) cho điểm / biểu thức.");
+  if (/:=/.test(s)) s = s.replace(/:=/g, "=");
+  /* log cơ số viết trước để dấu _ của log_2(...) không bị chặn */
+  s = s.replace(/log\s*_\s*(\d+(?:\.\d+)?|[a-zA-Z]+)\s*\(\s*([^)]+?)\s*\)/gi, (m, b, x) => `logb(${x},${b})`);
+  s = s.replace(/log\s*_\s*([a-zA-Z0-9]+)/g, "logb");
+  if (/[[\]]/.test(s)) throw new Error("Ngoặc [ ] là ma trận / miền — hãy dùng ( ) , vd: (2,3).");
+  if (/[@#$&_]/.test(s)) throw new Error("Ký tự @ # $ & _ chưa hỗ trợ trong biểu thức — hãy dùng x, y, số và hàm.");
+  if (/["'`]/.test(s)) throw new Error("Dấu nháy ' \" dùng để đặt tên — biểu thức chỉ dùng x, y, số và hàm.");
+  if (/[;]/.test(s) && !/\(.*[,;].*\)/.test(s)) throw new Error("Dấu ; dùng ngăn cách lệnh — hãy nhập từng biểu thức một.");
+  if (/:/.test(s)) throw new Error("Dấu : là tỉ lệ / định nghĩa — hãy dùng / cho phép chia, = cho phương trình.");
+  if (/->|=>/.test(s)) throw new Error("Mũi tên → (suy ra) là logic — hãy nhập phương trình biên f(x,y)=0.");
+  /* --- chuẩn hoá Unicode GeoGebra --- */
+  s = s.replace(/π/g, "pi").replace(/÷/g, "/").replace(/×/g, "*").replace(/−/g, "-").replace(/·/g, "*").replace(/•/g, "*");
+  s = s.replace(/≤/g, "<=").replace(/≥/g, ">=").replace(/≠/g, "!=").replace(/≐|≅|≈/g, "=");
+  s = s.replace(/∞/g, "Infinity").replace(/±/g, "+").replace(/∓/g, "-");
+  s = s.replace(/∧/g, "&&").replace(/∨/g, "||");
+  s = s.replace(/¬/g, "!").replace(/⌐/g, "!");
+  s = s.replace(/²/g, "^2").replace(/³/g, "^3").replace(/ⁿ/g, "^");
+  s = s.replace(/⁰/g, "^0").replace(/¹/g, "^1").replace(/⁴/g, "^4").replace(/⁵/g, "^5").replace(/⁶/g, "^6").replace(/⁷/g, "^7").replace(/⁸/g, "^8").replace(/⁹/g, "^9").replace(/⁺/g, "+");
+  s = s.replace(/∛\s*(\d+(?:\.\d+)?)/g, "cbrt($1)").replace(/√\s*(\d+(?:\.\d+)?)/g, "sqrt($1)");
+  s = s.replace(/∛/g, "cbrt").replace(/√/g, "sqrt");
+  s = s.replace(/sin\s*⁻¹|sin\s*\^\s*-1/gi, "asin").replace(/cos\s*⁻¹|cos\s*\^\s*-1/gi, "acos").replace(/tan\s*⁻¹|tan\s*\^\s*-1/gi, "atan");
+  s = s.replace(/⁻¹/g, "^-1").replace(/⁻/g, "-").replace(/ˣ/g, "^");
+  s = s.replace(/α|β|γ|θ|λ|μ|τ|φ|ω|ρ|σ/gi, (m) => (m.toLowerCase() === "π" ? m : "x"));
+  s = s.replace(/Δ/g, "x").replace(/Σ/g, "x");
+  /* % → /100 (50% = 50/100, x% = x/100), ° → radian (chỉ số) */
+  s = s.replace(/(\d+(?:\.\d+)?)\s*%/g, "($1/100)");
+  s = s.replace(/([xXyY\)])\s*%/g, "($1/100)");
+  s = s.replace(/(\d+(?:\.\d+)?)\s*°/g, "($1*pi/180)");
+  /* 10^(x), e^(x) để ^ → ** xử lý tự nhiên */
   s = s.replace(/\^/g, "**");
-  // explicit multiplication
-  s = s.replace(/(\d)(?=[a-zA-Z(])/g, "$1*");
+  /* giai thừa: 5! → fact(5), 12! → fact(12), x! → fact(x), (x+1)! → fact((x+1)) */
+  s = s.replace(/\(([^()]+)\)\s*!(?!=)/g, (m, a) => `fact((${a}))`);
+  s = s.replace(/(\d+(?:\.\d+)?|[xXyY\)])\s*!(?!=)/g, (m, a) => `fact(${a})`);
+  // explicit multiplication (2x -> 2*x, 2( -> 2*( ; không phá log10, 10^( )
+  s = s.replace(/(?<![a-zA-Z0-9])(\d)(?=[a-zA-Z(])/g, "$1*");
   s = s.replace(/(\))(?=[a-zA-Z0-9(])/g, "$1*");
   s = s.replace(/\b(x|pi|e)\)?\(/g, (m) => (m.endsWith("(") && !/(sin|cos|tan|log|exp|abs|qrt)\($/.test(m) ? m.slice(0, -1) + "*(" : m));
   // 'x(x+1)' edge (above handles most); keep simple second pass:
   s = s.replace(/(x|\))(\()/g, "$1*$2");
   // constants (word boundaries so exp/log names survive)
   s = s.replace(/\bpi\b/g, "Math.PI").replace(/(?<![a-zA-Z])e(?![a-zA-Z0-9])/g, "Math.E");
+  // Infinity giữ nguyên (không nhân e)
+  s = s.replace(/Math\.EInfinity/g, "Infinity");
   // ln / log handling BEFORE generic names
   s = s.replace(/\bln\b/g, "Math.log").replace(/(?<!\.)\blog\b(?!\d)/g, "Math.log10");
   for (const n of FN_NAMES) {
@@ -51,10 +97,12 @@ function compileScalar(src) {
     const re = new RegExp("\\b" + n + "\\b", "g");
     s = s.replace(re, "Math." + n);
   }
+  /* hàm tuỳ biến toàn cục (không prefix Math.) */
+  s = s.replace(/\bMath\.logb\b/g, "logb").replace(/\bMath\.nroot\b/g, "nroot").replace(/\bMath\.fact\b/g, "fact");
   if (/__/.test(s) || /constructor|prototype|Function|import|require|=>|;|\[|\]|{|}|`|\\/.test(s)) {
     throw new Error("Biểu thức chứa ký tự không hỗ trợ.");
   }
-  if (!/^[0-9xXyY+\-*/().,\s*MathPIElogqrtcsinadexfpobw\d.]*$/.test(s)) {
+  if (!/^[0-9xXyY+\-*/().,\s*MathPIElogqrtcsinadexfpobw\d.!&|><=]*$/.test(s)) {
     throw new Error("Biểu thức chứa ký tự không hỗ trợ.");
   }
   return s;
@@ -146,9 +194,34 @@ function parseCommand(raw) {
   const vl = s.match(/^x\s*=\s*(-?\d+(?:\.\d+)?)$/i);
   if (vl) return { kind: "vline", x: parseFloat(vl[1]), label: original };
 
-  const hasX = /[xX]/.test(s) && !/^[-\d\s.,()+*/^]*$/.test(s);
-  const hasY = /[yY]/.test(s.replace(/\b(exp|ln|log10|log)\b/gi, ""));
+  const hasX = /[xXαβγθλμτφωρσ]/.test(s) && !/^[-\d\s.,()+*/^]*$/.test(s);
+  const hasY = /[yY]/.test(s.replace(/\b(exp|ln|log10|logb|log)\b/gi, ""));
 
+  /* bất phương trình / miền logic kiểu GeoGebra: vẽ đường biên = để trực quan */
+  if (/&&|\|\|/.test(s)) {
+    const parts = s.split(/&&|\|\|/).map(p => p.trim()).filter(Boolean);
+    for (const part of parts) {
+      const m = part.match(/^([\s\S]+?)(<=|>=|!=|=|<|>)([\s\S]+)$/);
+      if (m) {
+        try {
+          const L = compileScalar(m[1]), R = compileScalar(m[3]);
+          const fn = makeFn(`(${L})-(${R})`, ["x", "y"]);
+          fn(0, 0);
+          return { kind: "implicit", fn, label: original, ineq: true };
+        } catch {}
+      }
+    }
+    throw new Error("Miền logic (∧ ∨) — hãy nhập từng đường biên, vd: x + y = 2.");
+  }
+  const ineqM = s.match(/^([\s\S]+?)(<=|>=|!=|<|>)([\s\S]+)$/);
+  if (ineqM && !/==/.test(s)) {
+    try {
+      const L = compileScalar(ineqM[1]), R = compileScalar(ineqM[3]);
+      const fn = makeFn(`(${L})-(${R})`, ["x", "y"]);
+      fn(0, 0);
+      return { kind: "implicit", fn, label: original, ineq: true };
+    } catch (e) { throw e; }
+  }
   if (s.includes("=")) {
     // implicit: LHS - (RHS)
     const i = s.indexOf("=");
@@ -1020,6 +1093,7 @@ function addObject(expr, opts = {}) {
   state.selectedId = obj.id;
   renderList(); refreshTableSelect(); draw(); kickAnim(); persist();
   if ((parsed.kind === "surface" || parsed.kind === "solid") && state.mode !== "3d") toast("Đã thêm hình 3D — bấm nút 3D để xem.", "ok");
+  if (parsed.ineq) toast("Bất phương trình (≤ ≥ < >) — đang vẽ đường biên = để trực quan.", "ok");
   return obj;
 }
 function removeObject(id) { pushHistory(); state.objects = state.objects.filter(o => o.id !== id); renderList(); refreshTableSelect(); draw(); persist(); }
@@ -1031,7 +1105,7 @@ function renderList(filter = "") {
   const items = state.objects.filter(o => !q || (o.name + " " + o.expr).toLowerCase().includes(q));
   $("#objectCount").textContent = `${state.objects.length} đối tượng`;
   if (!state.objects.length) {
-    list.innerHTML = `<div class="empty-note">Chưa có đối tượng nào.<br>Nhập <b>x^2 − 2</b> vào ô lệnh bên dưới rồi nhấn <b>Thực thi</b>.</div>`;
+    list.innerHTML = `<div class="empty-note">Chưa có đối tượng nào.<br>Nhập <b>x^2 − 2</b> vào ô lệnh phía trên rồi nhấn <b>⏎</b>.</div>`;
     return;
   }
   if (!items.length) { list.innerHTML = `<div class="empty-note">Không tìm thấy đối tượng phù hợp.</div>`; return; }
@@ -1067,14 +1141,32 @@ function renderList(filter = "") {
 }
 function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
 
-/* ---------------- command bar ---------------- */
+/* ---------------- command bar (nay nằm trong panel Đại số kiểu GeoGebra) ---------------- */
+let lastAns = 0;
+function insertAtCursor(inp, text) {
+  if (!inp) return;
+  const s = inp.selectionStart ?? inp.value.length;
+  const e = inp.selectionEnd ?? inp.value.length;
+  inp.value = inp.value.slice(0, s) + text + inp.value.slice(e);
+  const pos = s + String(text).length;
+  inp.focus();
+  try { inp.setSelectionRange(pos, pos); } catch {}
+}
 function executeCommand() {
   const input = $("#cmdInput");
-  const raw = input.value.trim();
+  if (!input) return;
+  let raw = input.value.trim();
   if (!raw) { toast("Hãy nhập biểu thức trước, ví dụ: x^2 - 2"); input.focus(); return; }
+  // hỗ trợ ans (kết quả trước)
+  if (/\bans\b/i.test(raw)) raw = raw.replace(/\bans\b/gi, `(${lastAns})`);
   try {
     // equation solve shortcut: "solve: x^2-3" or "f(x)=0"? plain add + analyse
     const obj = addObject(raw);
+    try {
+      if (obj.kind === "fn") { const v = obj.fn(0); if (isFinite(v)) lastAns = round2(v); }
+      else if (obj.kind === "point" || obj.kind === "point3d") lastAns = obj.x;
+      else if (obj.kind === "vline") lastAns = obj.x;
+    } catch {}
     toast(`Đã thêm ${obj.name}: ${obj.expr}`, "ok");
     input.value = ""; input.focus();
   } catch (e) { toast(e.message, "err"); }
@@ -1349,10 +1441,15 @@ function resetView() {
 
 function bindChrome() {
   $$(".rail-item").forEach(b => b.addEventListener("click", () => {
+    const v = b.dataset.view;
+    const wasActive = b.classList.contains("is-active");
+    const leftHidden = document.body.classList.contains("hide-left");
+    // click lại icon đang mở -> thu gọn panel; panel đang ẩn -> mở ra
+    if (wasActive && !leftHidden) { setLeftVisible(false); return; }
     $$(".rail-item").forEach(x => { x.classList.remove("is-active"); x.setAttribute("aria-pressed", "false"); });
     b.classList.add("is-active"); b.setAttribute("aria-pressed", "true");
-    const v = b.dataset.view;
     $$(".side-view").forEach(p => p.classList.toggle("is-visible", p.dataset.pane === v));
+    if (leftHidden) setLeftVisible(true);
     if (v === "table") refreshTable();
   }));
   $$("#toolGrid .tool-card").forEach(b => b.addEventListener("click", () => { setTool(b.dataset.tool); toast(`Công cụ: ${b.querySelector("b").textContent}`); }));
@@ -1363,21 +1460,100 @@ function bindChrome() {
     else if (a === "zoom-out") zoomBy(1 / 1.25);
     else if (a === "center") resetView();
     else if (a === "fullscreen") { if (document.fullscreenElement) document.exitFullscreen(); else wrap.requestFullscreen?.(); }
-    else if (a === "settings") { $(`.rail-item[data-view="settings"]`).click(); }
+    else if (a === "settings") { $(`.rail-item[data-view="settings"]`).click(); setLeftVisible(true); }
   }));
 
-  $("#execBtn").addEventListener("click", executeCommand);
-  $("#cmdInput").addEventListener("keydown", (e) => {
+  const execBtn = $("#execBtn");
+  if (execBtn) execBtn.addEventListener("click", executeCommand);
+  const cmdInput = $("#cmdInput");
+  if (cmdInput) cmdInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter") executeCommand();
     if (e.key === "Escape") { e.target.value = ""; }
   });
-  $("#clearCmdBtn").addEventListener("click", () => { $("#cmdInput").value = ""; $("#cmdInput").focus(); });
-  $("#keyboardBtn").addEventListener("click", () => { const k = $("#mathKeys"); k.hidden = !k.hidden; });
-  $$("#mathKeys button").forEach(b => b.addEventListener("click", () => {
-    const inp = $("#cmdInput"); inp.value += b.dataset.k; inp.focus();
+  const clearCmdBtn = $("#clearCmdBtn");
+  if (clearCmdBtn) clearCmdBtn.addEventListener("click", () => { const i = $("#cmdInput"); if (i) { i.value = ""; i.focus(); } });
+  const geoAddBtn = $("#geoAddBtn");
+  if (geoAddBtn) geoAddBtn.addEventListener("click", executeCommand);
+  const kbToggle = $("#keyboardBtn");
+  if (kbToggle) kbToggle.addEventListener("click", () => {
+    const k = $("#mathKeys") || $("#geoKeyboard");
+    if (k) k.hidden = !k.hidden;
+  });
+  // Tabs bàn phím kiểu GeoGebra: 123 / f(x) / ABC / #&¬ (4 ảnh mẫu)
+  $$(".geo-kb-tabs button").forEach(t => t.addEventListener("click", () => {
+    $$(".geo-kb-tabs button").forEach(x => x.classList.toggle("is-active", x === t));
+    $$(".geo-keyboard .kb-pane").forEach(p => p.classList.toggle("is-visible", p.dataset.paneKb === t.dataset.kb));
   }));
+  // Shift qwerty (một lần như điện thoại) + popup Hy Lạp
+  let kbShift = false;
+  const greekPop = $("#greekPop");
+  // Tất cả phím trong keyboard mới: chèn tại con trỏ + phím đặc biệt
+  $$(".geo-keyboard button").forEach(b => b.addEventListener("click", () => {
+    if (b.closest(".geo-kb-tabs")) return; // tab đã xử lý riêng
+    const inp = $("#cmdInput");
+    if (!inp) return;
+    const k = b.dataset.k, act = b.dataset.act;
+    if (act === "shift") {
+      kbShift = !kbShift;
+      b.classList.toggle("is-active", kbShift);
+      $$(".kb-abc .qb-row button[data-k]").forEach(x => {
+        if (/^[a-z]$/i.test(x.dataset.k)) x.textContent = kbShift ? x.dataset.k.toUpperCase() : x.dataset.k.toLowerCase();
+      });
+      return;
+    }
+    if (act === "greek") {
+      if (greekPop) greekPop.hidden = !greekPop.hidden;
+      return;
+    }
+    if (act === "back") {
+      const s = inp.selectionStart ?? inp.value.length, e = inp.selectionEnd ?? inp.value.length;
+      if (s !== e) insertAtCursor(inp, "");
+      else if (s > 0) {
+        inp.value = inp.value.slice(0, s - 1) + inp.value.slice(e);
+        inp.focus();
+        try { inp.setSelectionRange(s - 1, s - 1); } catch {}
+      } else inp.focus();
+      return;
+    }
+    if (act === "clear") { inp.value = ""; inp.focus(); return; }
+    if (act === "left") {
+      const s = (inp.selectionStart ?? 1) - 1;
+      inp.focus();
+      try { inp.setSelectionRange(Math.max(0, s), Math.max(0, s)); } catch {}
+      return;
+    }
+    if (act === "right") {
+      const s = (inp.selectionStart ?? 0) + 1;
+      inp.focus();
+      try { inp.setSelectionRange(s, s); } catch {}
+      return;
+    }
+    if (act === "enter") { if (greekPop) greekPop.hidden = true; executeCommand(); return; }
+    if (!k) return;
+    let ins = k;
+    if (/^ans$/i.test(k)) ins = String(lastAns);
+    else if (kbShift && /^[a-z]$/i.test(k)) {
+      ins = k.toUpperCase();
+      kbShift = false;
+      const sh = document.querySelector('.kb-abc [data-act="shift"]');
+      if (sh) sh.classList.remove("is-active");
+      $$(".kb-abc .qb-row button[data-k]").forEach(x => {
+        if (/^[a-z]$/i.test(x.dataset.k)) x.textContent = x.dataset.k.toLowerCase();
+      });
+    }
+    /* gợi ý CAS / ký hiệu nâng cao ngay khi bấm (vẫn chèn để Enter báo chi tiết) */
+    if (/^d\/dx\($/.test(ins)) toast("d/dx là đạo hàm — nhập hàm kết quả để vẽ, vd: 2*x.", undefined);
+    else if (/^int\($/.test(ins)) toast("∫ là nguyên hàm — nhập hàm kết quả để vẽ, vd: x^2/2.", undefined);
+    else if (/^[∀∃∈∉⊂⊆∥⊥∠⊗∧∨]$/.test(ins)) toast(`Ký hiệu ${ins} là logic / tập hợp — hãy nhập phương trình biên f(x,y)=0.`, undefined);
+    else if (/^matrix|^\[\.\]/.test(ins) || ins === "[.]" || ins === "[..]") toast("Ma trận — hãy nhập điểm (x,y) hoặc khối 3D cube()/sphere().", undefined);
+    else if (/^[{}]$|^:=$|^;$|^\$$/.test(ins)) toast("Ký hiệu lập trình / tập hợp — biểu thức vẽ chỉ cần x, y, số và hàm.", undefined);
+    else if (/^[αβγθλμρσφωΔΣ]$/.test(ins)) toast(`${ins} sẽ dùng như biến x khi vẽ.`, undefined);
+    if (greekPop && !b.closest("#greekPop")) greekPop.hidden = true;
+    insertAtCursor(inp, ins);
+  }));
+  if (greekPop) greekPop.addEventListener("click", (e) => e.stopPropagation());
   $("#algebraSearch").addEventListener("input", (e) => renderList(e.target.value));
-  $("#addObjectBtn").addEventListener("click", () => { $("#cmdInput").focus(); toast("Nhập biểu thức vào ô lệnh bên dưới."); });
+  $("#addObjectBtn").addEventListener("click", () => { $("#cmdInput").focus(); toast("Nhập biểu thức vào ô lệnh phía trên (kiểu GeoGebra)."); });
   $("#clearAllBtn").addEventListener("click", () => {
     if (!state.objects.length) return;
     pushHistory(); state.objects = []; state.selectedId = null;
@@ -1487,45 +1663,14 @@ function bindChrome() {
   if (insightExpand) insightExpand.addEventListener("click", () => setInsightVisible(true));
   try { if (localStorage.getItem("mind-math-hide-insight") === "1") setInsightVisible(false); } catch {}
 
-  // ---- Thanh kéo dãn panel trái (nới rộng vùng chat Markus) ----
-  const leftResizer = $("#leftResizer"), workspaceEl = $(".workspace");
-  const LEFT_W_MIN = 240, LEFT_W_MAX = 560;
-  function setLeftW(w, save) {
-    const v = Math.round(Math.min(LEFT_W_MAX, Math.max(LEFT_W_MIN, w)));
-    if (workspaceEl) workspaceEl.style.setProperty("--leftw", v + "px");
-    if (save !== false) { try { localStorage.setItem("mind-math-leftw", String(v)); } catch {} }
+  // ---- Thu gọn / mở rộng panel trái bằng click icon trên rail ----
+  function setLeftVisible(v) {
+    document.body.classList.toggle("hide-left", !v);
+    try { localStorage.setItem("mind-math-hide-left", v ? "0" : "1"); } catch {}
+    requestAnimationFrame(() => { try { draw(); } catch {} });
   }
-  try {
-    const savedW = parseFloat(localStorage.getItem("mind-math-leftw"));
-    if (savedW >= LEFT_W_MIN && savedW <= LEFT_W_MAX) setLeftW(savedW, false);
-  } catch {}
-  if (leftResizer && workspaceEl) {
-    let dragging = false, startX = 0, startW = 0, raf = 0;
-    leftResizer.addEventListener("pointerdown", (e) => {
-      dragging = true; startX = e.clientX;
-      startW = workspaceEl.getBoundingClientRect ? $("#algebraPanel")?.getBoundingClientRect().width || 302 : 302;
-      leftResizer.setPointerCapture?.(e.pointerId);
-      leftResizer.classList.add("is-drag"); document.body.classList.add("resizing");
-      e.preventDefault();
-    });
-    leftResizer.addEventListener("pointermove", (e) => {
-      if (!dragging) return;
-      const w = startW + (e.clientX - startX);
-      cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(() => { setLeftW(w, false); try { draw(); } catch {} });
-    });
-    const endDrag = (e) => {
-      if (!dragging) return;
-      dragging = false;
-      cancelAnimationFrame(raf);
-      setLeftW(startW + (e.clientX - startX), true);
-      leftResizer.classList.remove("is-drag"); document.body.classList.remove("resizing");
-      try { draw(); } catch {}
-    };
-    leftResizer.addEventListener("pointerup", endDrag);
-    leftResizer.addEventListener("pointercancel", endDrag);
-    leftResizer.addEventListener("dblclick", () => setLeftW(302, true));
-  }
+  try { if (localStorage.getItem("mind-math-hide-left") === "1") setLeftVisible(false); } catch {}
+  try { localStorage.removeItem("mind-math-leftw"); } catch {}
 
   // ---- Đường tròn lượng giác ----
   const sl = $("#trigSlider");
@@ -1677,7 +1822,7 @@ function runDemo(kind) {
       const [a, b] = [-4, 4];
       findExtrema(o.fn, a, b).forEach(p => markPoint(p.x, p.y, "#fbbf24"));
       findRoots(o.fn, a, b).forEach(x => { try { markPoint(x, o.fn(x), "#34d399"); } catch {} });
-      $(`.rail-item[data-view="table"]`).click();
+      $(`.rail-item[data-view="table"]`).click(); setLeftVisible(true);
       toast("Đã phân tích f(x)=x³−3x: cực trị vàng, nghiệm xanh.", "ok");
     } else if (kind === "solve") {
       const o = addObject("x^2 - 3", { color: "#38bdf8" });

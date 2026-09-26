@@ -82,7 +82,7 @@ body::before{ /* faint starfield / lab dust */
   background:radial-gradient(circle at 30% 30%, #e879f9, #7c3aed 70%); color:#fff; font:700 12px var(--font)}
 
 /* ---------- workspace grid ---------- */
-.workspace{flex:1; display:grid; grid-template-columns:78px var(--leftw,302px) minmax(0,1fr) 300px; gap:12px; padding:12px 14px 118px; min-height:0}
+.workspace{flex:1; display:grid; grid-template-columns:78px 302px minmax(0,1fr) 300px; gap:12px; padding:12px 14px 118px; min-height:0}
 
 /* ---------- rail ---------- */
 .rail{
@@ -112,14 +112,6 @@ body::before{ /* faint starfield / lab dust */
   background:linear-gradient(90deg,transparent,rgba(139,92,246,.6),transparent)}
 .side-view{display:none; flex-direction:column; min-height:0; height:100%; padding:14px; overflow-y:auto}
 .side-view.is-visible{display:flex}
-/* thanh kéo dãn panel trái (chứa chat Markus) */
-.panel-resizer{position:absolute; top:0; bottom:0; right:-8px; width:16px; z-index:15; cursor:ew-resize; touch-action:none}
-.panel-resizer::after{content:""; position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
-  width:5px; height:56px; border-radius:99px; background:rgba(139,92,246,.35); transition:.15s; opacity:0}
-.algebra-panel:hover .panel-resizer::after,.panel-resizer.is-drag{opacity:1}
-.panel-resizer:hover::after{background:rgba(139,92,246,.7); box-shadow:var(--glow)}
-.panel-resizer.is-drag::after{background:#8b5cf6; box-shadow:var(--glow)}
-body.resizing{user-select:none; cursor:ew-resize}
 .side-view::-webkit-scrollbar{width:8px}
 .side-view::-webkit-scrollbar-thumb{background:rgba(139,92,246,.35); border-radius:8px}
 .side-view::-webkit-scrollbar-thumb:hover{background:rgba(139,92,246,.55)}
@@ -361,7 +353,7 @@ body.resizing{user-select:none; cursor:ew-resize}
 
 /* ---------- center stage ---------- */
 .stage{display:flex; flex-direction:column; gap:10px; min-width:0; min-height:0}
-.graph-wrap{position:relative; flex:1; min-height:340px; border-radius:var(--r-xl); overflow:hidden;
+.graph-wrap{position:relative; flex:1; min-height:340px; border-radius:0; overflow:hidden;
   border:1px solid rgba(139,92,246,.35); box-shadow:var(--shadow), 0 0 34px rgba(76,43,190,.35), inset 0 0 80px rgba(20,10,70,.18);
   background:#ffffff}
 /* Dark mode: layout giữa chuyển thành màu đen */
@@ -428,13 +420,86 @@ body[data-theme="light"] .trace-card span{color:#0f172a}
 .toast.ok{border-color:rgba(52,211,153,.6)} .toast.err{border-color:rgba(251,113,133,.65)}
 @keyframes toastIn{from{opacity:0; transform:translateY(8px)}}
 
-/* command bar */
+/* ---------- algebra GeoGebra style: input trên + list giữa + keyboard dưới ---------- */
+.algebra-geo{padding-bottom:0 !important; overflow:hidden}
+.algebra-geo .geo-input-row,.algebra-geo .side-head,.algebra-geo .geo-hint,.algebra-geo .search-box,.algebra-geo .side-foot{flex:0 0 auto}
+.geo-input-row{display:flex; align-items:center; gap:6px; background:rgba(8,6,26,.65);
+  border:1px solid rgba(139,92,246,.45); border-radius:13px; padding:6px;
+  box-shadow:inset 0 0 14px rgba(139,92,246,.12)}
+.geo-add-btn{width:32px; height:32px; flex:0 0 auto; border-radius:10px; border:1px solid rgba(139,92,246,.4);
+  background:rgba(139,92,246,.16); color:#e4dcff; font:700 18px/1 var(--font); cursor:pointer; transition:.15s}
+.geo-add-btn:hover{background:rgba(139,92,246,.35); color:#fff; box-shadow:var(--glow)}
+.algebra-geo #cmdInput{flex:1; min-width:0; background:transparent; border:none; border-bottom:2px solid rgba(139,92,246,.55);
+  outline:none; color:#fff; font:500 13px var(--font); padding:6px 2px; border-radius:0}
+.algebra-geo #cmdInput:focus{border-bottom-color:#38bdf8}
+.algebra-geo #cmdInput::placeholder{color:#7c7fae; font-size:12px}
+.geo-clear{width:28px; height:28px; flex:0 0 auto; border-radius:9px; border:1px solid transparent;
+  background:transparent; color:var(--muted); cursor:pointer; font-size:12px}
+.geo-clear:hover{background:rgba(251,113,133,.2); color:#fff}
+.geo-exec{width:36px; height:32px; flex:0 0 auto; border-radius:10px; border:none; cursor:pointer;
+  color:#fff; font:700 15px var(--font);
+  background:linear-gradient(135deg,#8b5cf6,#4f46e5 55%,#0284c7);
+  box-shadow:0 0 12px rgba(139,92,246,.55); transition:.15s}
+.geo-exec:hover{filter:brightness(1.15)}
+.geo-hint{font-size:10.5px; color:var(--dim); line-height:1.5; margin:6px 2px 8px}
+.algebra-geo .search-box{margin-bottom:8px}
+.algebra-geo .object-list{flex:1; min-height:80px; max-height:none; overflow-y:auto}
+.geo-keyboard{flex:0 0 auto; margin:10px -14px -14px; border-top:1px solid var(--line);
+  background:rgba(10,8,32,.92); padding:8px 10px 10px; backdrop-filter:blur(8px)}
+.geo-kb-tabs{display:flex; gap:5px; margin-bottom:8px}
+.geo-kb-tabs button{flex:1; border:1px solid rgba(139,92,246,.3); background:rgba(139,92,246,.1);
+  color:#cfc9ff; border-radius:9px; font:700 11.5px var(--font); padding:7px 4px; cursor:pointer; transition:.13s}
+.geo-kb-tabs button:hover{background:rgba(139,92,246,.25); color:#fff}
+.geo-kb-tabs button.is-active{background:linear-gradient(135deg,#7c3aed,#2563eb); color:#fff; border-color:transparent;
+  box-shadow:0 2px 10px rgba(124,58,237,.5)}
+.geo-keyboard .math-keys{display:none; grid-template-columns:repeat(5,1fr); gap:6px;
+  padding:0; border:none; background:transparent; border-radius:0; max-height:228px; overflow-y:auto}
+.geo-keyboard .math-keys.is-visible{display:grid}
+.geo-keyboard .kb-pane{display:none; max-height:248px; overflow-y:auto}
+.geo-keyboard .kb-pane.is-visible{display:block}
+.geo-keyboard .kb-123.is-visible,.geo-keyboard .kb-fx.is-visible{display:grid}
+.geo-keyboard .kb-pane::-webkit-scrollbar,.geo-keyboard .math-keys::-webkit-scrollbar{width:6px}
+.geo-keyboard .kb-pane::-webkit-scrollbar-thumb,.geo-keyboard .math-keys::-webkit-scrollbar-thumb{background:rgba(139,92,246,.4); border-radius:6px}
+/* ABC qwerty kiểu GeoGebra ảnh 3 */
+.kb-abc{padding:2px 0}
+.qb-row{display:flex; gap:5px; justify-content:center; margin-bottom:6px}
+.qb-row.center{padding:0 12px}
+.qb-row button{flex:1; min-width:0; background:rgba(255,255,255,.06); border:1px solid rgba(139,92,246,.28);
+  color:#e8e4ff; border-radius:9px; font:600 12px var(--font); padding:9px 2px; cursor:pointer; transition:.12s}
+.qb-row button:hover{background:rgba(139,92,246,.35); color:#fff}
+.qb-row button:active{transform:scale(.95)}
+.qb-row button[data-act="shift"].is-active{background:linear-gradient(135deg,#7c3aed,#2563eb); color:#fff; border-color:transparent}
+.qb-row button[data-act="greek"]{color:#7dd3fc; font-weight:700}
+.qb-row .qb-space{flex:3}
+.qb-row .kb-enter{background:linear-gradient(135deg,#0ea5e9,#6366f1); color:#fff; border-color:transparent}
+.greek-pop{display:grid; grid-template-columns:repeat(6,1fr); gap:5px; margin-top:2px;
+  background:rgba(8,6,26,.9); border:1px solid rgba(56,189,248,.4); border-radius:10px; padding:7px}
+.greek-pop[hidden]{display:none}
+.greek-pop button{background:rgba(56,189,248,.12); border:1px solid rgba(56,189,248,.35); color:#bae6fd;
+  border-radius:8px; font:700 13px var(--font); padding:8px 2px; cursor:pointer}
+.greek-pop button:hover{background:rgba(56,189,248,.35); color:#fff}
+/* SYM groups kiểu ảnh 4 + khối 3D */
+.kb-group{font:700 10px var(--font); color:var(--dim); text-transform:uppercase; letter-spacing:.5px; margin:8px 0 5px}
+.kb-group:first-child{margin-top:0}
+.kb-sym .kb-sub{display:grid; grid-template-columns:repeat(5,1fr); gap:6px; padding:0; border:none; background:transparent}
+.kb-sym .kb-sub{display:grid !important; max-height:none; overflow:visible}
+.kb-sym{padding-bottom:2px}
+.geo-keyboard .math-keys button{background:rgba(255,255,255,.06); border:1px solid rgba(139,92,246,.28);
+  color:#e8e4ff; border-radius:9px; font:600 12px var(--font); padding:9px 2px; cursor:pointer;
+  min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; transition:.12s}
+.geo-keyboard .math-keys button:hover{background:rgba(139,92,246,.35); color:#fff; border-color:rgba(139,92,246,.55)}
+.geo-keyboard .math-keys button:active{transform:scale(.96)}
+.geo-keyboard .math-keys button[data-act="back"]{color:#fca5a5}
+.geo-keyboard .math-keys button.kb-enter{background:linear-gradient(135deg,#0ea5e9,#6366f1); color:#fff; border-color:transparent}
+.geo-keyboard .math-keys button[data-act="enter"].kb-enter{grid-column:span 1}
+
+/* command bar cũ ở center đã dời lên panel — giữ class để không vỡ layout cũ */
 .command-bar{display:flex; align-items:center; gap:9px; padding:10px 10px 10px 14px; border-radius:20px;
   background:linear-gradient(90deg,rgba(67, 56, 148, 0.95),rgba(41, 25, 179, 0.95));
   border:1px solid rgba(139,92,246,.45); box-shadow:var(--shadow), 0 0 24px rgba(124,58,237,.35), inset 0 1px 0 rgba(255,255,255,.08)}
 .cmd-icon{color:#b9aefc; display:inline-flex}
-#cmdInput{flex:1; min-width:0; background:transparent; border:none; outline:none; color:#fff; font:500 14px var(--font)}
-#cmdInput::placeholder{color:#8f8cb8}
+.stage #cmdInput{flex:1; min-width:0; background:transparent; border:none; outline:none; color:#fff; font:500 14px var(--font)}
+.stage #cmdInput::placeholder{color:#8f8cb8}
 .chip-btn{background:rgba(255,255,255,.07); border:1px solid rgba(139,92,246,.35); color:#ddd8ff; border-radius:10px;
   font:700 12px var(--font); padding:8px 11px; cursor:pointer}
 .chip-btn:hover{background:rgba(139,92,246,.3)}
@@ -475,9 +540,13 @@ body[data-theme="light"] .trace-card span{color:#0f172a}
   background:linear-gradient(180deg,rgba(139,92,246,.85),rgba(79,70,229,.85)); color:#fff;
   border:1px solid rgba(255,255,255,.25); box-shadow:var(--glow); font:700 14px/1 var(--font)}
 .insight-expand:hover{filter:brightness(1.15)}
-body.hide-insight .workspace{grid-template-columns:78px var(--leftw,302px) minmax(0,1fr)}
+body.hide-insight .workspace{grid-template-columns:78px 302px minmax(0,1fr)}
 body.hide-insight .insight-panel{display:none}
 body.hide-insight .insight-expand{display:block}
+/* đóng / mở panel trái (bằng click icon trên rail) */
+body.hide-left .workspace{grid-template-columns:78px minmax(0,1fr) 300px}
+body.hide-left.hide-insight .workspace{grid-template-columns:78px minmax(0,1fr)}
+body.hide-left .algebra-panel{display:none}
 .workspace{position:relative}
 .insight-block{background:rgba(10,8,32,.55); border:1px solid rgba(139,92,246,.18); border-radius:14px; padding:12px 13px}
 .insight-block.accent{background:linear-gradient(160deg,rgba(124,58,237,.30),rgba(14,165,233,.14)); border-color:rgba(139,92,246,.5);
@@ -525,16 +594,19 @@ body.hide-insight .insight-expand{display:block}
 
 /* ---------- responsive ---------- */
 @media (max-width:1240px){
-  .workspace{grid-template-columns:70px var(--leftw,270px) minmax(0,1fr); padding-bottom:130px}
-  body.hide-insight .workspace{grid-template-columns:70px var(--leftw,270px) minmax(0,1fr)}
+  .workspace{grid-template-columns:70px 270px minmax(0,1fr); padding-bottom:130px}
+  body.hide-insight .workspace{grid-template-columns:70px 270px minmax(0,1fr)}
   .insight-panel{display:none}
   .panel-toggle,.insight-expand{display:none}
+  body.hide-left .workspace{grid-template-columns:70px minmax(0,1fr)}
 }
 @media (max-width:920px){
   body{overflow:auto}
   .app{height:auto; min-height:100vh}
   .workspace{grid-template-columns:64px minmax(0,1fr); grid-auto-rows:min-content}
   body.hide-insight .workspace{grid-template-columns:64px minmax(0,1fr)}
+  body.hide-left .workspace{grid-template-columns:64px minmax(0,1fr)}
+  body.hide-left.hide-insight .workspace{grid-template-columns:64px minmax(0,1fr)}
   .algebra-panel{order:2; grid-column:2; max-height:340px}
   .stage{grid-column:2; min-height:560px}
   .workspace-badge{display:none}

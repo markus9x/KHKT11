@@ -117,13 +117,20 @@
 
     <!-- ALGEBRA / OBJECT PANEL -->
     <aside class="panel algebra-panel" id="algebraPanel" aria-label="Bảng đại số">
-      <div class="panel-resizer" id="leftResizer" title="Kéo để nới rộng / thu hẹp" aria-label="Kéo để đổi độ rộng panel"></div>
-      <!-- VIEW: ALGEBRA -->
-      <section class="side-view is-visible" data-pane="algebra">
+      <!-- VIEW: ALGEBRA — kiểu GeoGebra: input trên + list giữa + bàn phím dưới -->
+      <section class="side-view is-visible algebra-geo" data-pane="algebra">
         <div class="side-head">
           <h2>Đối tượng đại số</h2>
           <button class="mini-btn" id="addObjectBtn" title="Thêm đối tượng">＋ Thêm</button>
         </div>
+        <!-- Ô nhập lệnh kiểu GeoGebra (dời từ command-bar trung tâm lên đây) -->
+        <div class="geo-input-row" role="search">
+          <button class="geo-add-btn" id="geoAddBtn" title="Thêm (Enter)">+</button>
+          <input id="cmdInput" type="text" placeholder="Nhập hàm, điểm, pt… vd: x^2-2, sin(x)" autocomplete="off" spellcheck="false" />
+          <button class="geo-clear" id="clearCmdBtn" title="Xóa dòng lệnh">✕</button>
+          <button class="geo-exec" id="execBtn" title="Thực thi (Enter)">⏎</button>
+        </div>
+        <div class="geo-hint">2D: x^2-2, sin(x) · 3D: z=x^2+y^2, cube(3), sphere(2), cyl(1.5,3)</div>
         <div class="search-box">
           <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
           <input id="algebraSearch" type="text" placeholder="Tìm kiếm đối tượng…" autocomplete="off" />
@@ -133,6 +140,67 @@
         <div class="side-foot">
           <span id="objectCount">0 đối tượng</span>
           <button class="link-btn" id="clearAllBtn">Xóa tất cả</button>
+        </div>
+        <!-- Bàn phím toán học kiểu GeoGebra Calculator Suite (hình 3) -->
+        <div class="geo-keyboard" id="geoKeyboard">
+          <div class="geo-kb-tabs" role="tablist" aria-label="Chế độ bàn phím">
+            <button data-kb="123" class="is-active">123</button>
+            <button data-kb="fx">f(x)</button>
+            <button data-kb="abc">ABC</button>
+            <button data-kb="sym">#&amp;¬</button>
+          </div>
+          <!-- 123: số + biến + so sánh — theo ảnh 1, style tối ảnh 5 -->
+          <div class="math-keys kb-pane kb-123 is-visible" data-pane-kb="123" id="mathKeys">
+            <button data-k="x">x</button><button data-k="y">y</button><button data-k="z">z</button><button data-k="π">π</button><button data-act="back" title="Xóa 1 ký tự">⌫</button>
+            <button data-k="7">7</button><button data-k="8">8</button><button data-k="9">9</button><button data-k="×">×</button><button data-k="÷">÷</button>
+            <button data-k="4">4</button><button data-k="5">5</button><button data-k="6">6</button><button data-k="+">+</button><button data-k="−">−</button>
+            <button data-k="1">1</button><button data-k="2">2</button><button data-k="3">3</button><button data-k="=">=</button><button data-k="^" title="Mũ: x^y">xʸ</button>
+            <button data-k="0">0</button><button data-k=".">.</button><button data-k=",">,</button><button data-k="("> (</button><button data-k=")">)</button>
+            <button data-k="²" title="Bình phương">x²</button><button data-k="√(" title="Căn bậc 2">√</button><button data-k="e">e</button><button data-k="abs(" title="Trị tuyệt đối">|.|</button><button data-k="°" title="Độ → radian">°</button>
+            <button data-k="<">&lt;</button><button data-k=">">&gt;</button><button data-k="≤">≤</button><button data-k="≥">≥</button><button data-k="ans" title="Kết quả trước">ans</button>
+            <button data-act="left" title="Sang trái">‹</button><button data-act="right" title="Sang phải">›</button><button data-act="clear" title="Xóa hết">C</button><button data-act="enter" class="kb-enter" style="grid-column:span 2" title="Thực thi (Enter)">⏎</button>
+          </div>
+          <!-- f(x): hàm + CAS cơ bản — theo ảnh 2 -->
+          <div class="math-keys kb-pane kb-fx" data-pane-kb="fx">
+            <button data-k="sin(">sin</button><button data-k="cos(">cos</button><button data-k="tan(">tan</button><button data-k="%" title="Phần trăm">%</button><button data-act="back">⌫</button>
+            <button data-k="asin(" title="arcsin">sin⁻¹</button><button data-k="acos(" title="arccos">cos⁻¹</button><button data-k="atan(" title="arctan">tan⁻¹</button><button data-k="!" title="Giai thừa">!</button><button data-k="°" title="Độ">°</button>
+            <button data-k="ln(">ln</button><button data-k="log10(">log₁₀</button><button data-k="logb(" title="Log cơ số a: logb(x,a)">logₐ</button><button data-k="$" title="Hằng / tiền tệ">$</button><button data-k="{">{</button>
+            <button data-k="}">}</button><button data-k=";">;</button><button data-k=":=" title="Định nghĩa">:=</button><button data-k="d/dx(" title="Đạo hàm">d/dx</button><button data-k="int(" title="Nguyên hàm">∫</button>
+            <button data-k="i" title="Đơn vị ảo">i</button><button data-k="exp(" title="e mũ">eˣ</button><button data-k="10^(" title="10 mũ">10ˣ</button><button data-k="nroot(" title="Căn bậc n: nroot(x,n)">ⁿ√</button><button data-k="π">π</button>
+            <button data-k="x">x</button><button data-k="y">y</button><button data-k="e">e</button><button data-k="("> (</button><button data-k=")">)</button>
+            <button data-act="left">‹</button><button data-act="right">›</button><button data-act="clear">C</button><button data-act="enter" class="kb-enter" style="grid-column:span 2">⏎</button>
+          </div>
+          <!-- ABC: qwerty đầy đủ — theo ảnh 3 -->
+          <div class="kb-pane kb-abc" data-pane-kb="abc">
+            <div class="qb-row"><button data-k="q">q</button><button data-k="w">w</button><button data-k="e">e</button><button data-k="r">r</button><button data-k="t">t</button><button data-k="y">y</button><button data-k="u">u</button><button data-k="i">i</button><button data-k="o">o</button><button data-k="p">p</button></div>
+            <div class="qb-row center"><button data-k="a">a</button><button data-k="s">s</button><button data-k="d">d</button><button data-k="f">f</button><button data-k="g">g</button><button data-k="h">h</button><button data-k="j">j</button><button data-k="k">k</button><button data-k="l">l</button></div>
+            <div class="qb-row"><button data-act="shift" title="Viết hoa">⇧</button><button data-k="z">z</button><button data-k="x">x</button><button data-k="c">c</button><button data-k="v">v</button><button data-k="b">b</button><button data-k="n">n</button><button data-k="m">m</button><button data-act="back">⌫</button></div>
+            <div class="qb-row"><button data-act="greek" title="Chữ Hy Lạp">αβγ</button><button data-k=",">,</button><button data-k="'" title="Nháy đơn">'</button><button data-k=" " class="qb-space" title="Dấu cách">␣</button><button data-act="left">‹</button><button data-act="right">›</button><button data-act="enter" class="kb-enter">⏎</button></div>
+            <div class="greek-pop" id="greekPop" hidden>
+              <button data-k="α">α</button><button data-k="β">β</button><button data-k="γ">γ</button><button data-k="θ">θ</button><button data-k="λ">λ</button><button data-k="μ">μ</button><button data-k="ρ">ρ</button><button data-k="σ">σ</button><button data-k="φ">φ</button><button data-k="ω">ω</button><button data-k="Δ">Δ</button><button data-k="Σ">Σ</button><button data-k="π">π</button>
+            </div>
+          </div>
+          <!-- #&¬: ký hiệu logic + khối 3D — theo ảnh 4 + giữ 3D của app -->
+          <div class="kb-pane kb-sym" data-pane-kb="sym">
+            <div class="kb-group">Logic &amp; tập hợp</div>
+            <div class="math-keys kb-sub">
+              <button data-k="∞" title="Vô cực">∞</button><button data-k="±" title="Cộng-trừ">±</button><button data-k="≠" title="Khác">≠</button><button data-k="∧" title="Và">∧</button><button data-k="∨" title="Hoặc">∨</button>
+              <button data-k="→" title="Suy ra">→</button><button data-k="¬" title="Phủ định">¬</button><button data-k="∀" title="Với mọi">∀</button><button data-k="∃" title="Tồn tại">∃</button><button data-k="⊗" title="Tích tensor">⊗</button>
+              <button data-k="∥" title="Song song">∥</button><button data-k="⊥" title="Vuông góc">⊥</button><button data-k="∈" title="Thuộc">∈</button><button data-k="⊂" title="Tập con">⊂</button><button data-k="⊆" title="Tập con hoặc bằng">⊆</button>
+              <button data-k="∠" title="Góc">∠</button><button data-k="[.]" title="Ma trận">[.::]</button><button data-k="[..]" title="Ma trận">[:::]</button><button data-k="[" title="Ngoặc vuông">[</button><button data-k="]" title="Ngoặc vuông">]</button>
+            </div>
+            <div class="kb-group">Dấu &amp; ký hiệu</div>
+            <div class="math-keys kb-sub">
+              <button data-k=":">:</button><button data-k="&amp;">&amp;</button><button data-k="@">@</button><button data-k="#">#</button><button data-k="$">$</button>
+              <button data-k=",">,</button><button data-k="'" title="Nháy đơn">'</button><button data-k="&quot;" title="Nháy kép">"</button><button data-k="''" title="Hai phẩy">''</button><button data-act="back">⌫</button>
+              <button data-act="left">‹</button><button data-act="right">›</button><button data-act="clear">C</button><button data-act="enter" class="kb-enter" style="grid-column:span 2">⏎</button>
+            </div>
+            <div class="kb-group">Khối 3D · Mind Math</div>
+            <div class="math-keys kb-sub">
+              <button data-k="cube(">cube</button><button data-k="box(">box</button><button data-k="sphere(">sphere</button><button data-k="cyl(">cyl</button><button data-k="cone(">cone</button>
+              <button data-k="pyramid(">pyramid</button><button data-k="disk(">disk</button><button data-k="square(">square</button><button data-k="rect(">rect</button><button data-k="tri(">tri</button>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -318,14 +386,14 @@
         </div>
 
         <div class="graph-toolbar" role="toolbar" aria-label="Công cụ khung nhìn">
-          <button data-act="pointer" class="is-active" title="Con trỏ / di chuyển"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M6 3l13 9-7 1.5L8.5 21 6 3z"/></svg></button>
+          <button data-act="pointer" class="is-active" title="Con trỏ / di chuyển"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 3.5 18 11l-6.2 1.6L8.4 19z"/></svg></button>
           <span class="tb-sep"></span>
-          <button data-act="zoom-in" title="Phóng to"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5M11 8v6M8 11h6"/></svg></button>
-          <button data-act="zoom-out" title="Thu nhỏ"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5M8 11h6"/></svg></button>
-          <button data-act="fullscreen" title="Toàn màn hình"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/></svg></button>
-          <button data-act="center" title="Căn giữa / đặt lại"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></button>
+          <button data-act="zoom-in" title="Phóng to"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="11" cy="11" r="6.2"/><path d="m15.6 15.6 4.4 4.4M11 8.4v5.2M8.4 11h5.2"/></svg></button>
+          <button data-act="zoom-out" title="Thu nhỏ"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="11" cy="11" r="6.2"/><path d="m15.6 15.6 4.4 4.4M8.4 11h5.2"/></svg></button>
+          <button data-act="fullscreen" title="Toàn màn hình"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/></svg></button>
+          <button data-act="center" title="Về trang chủ khung nhìn"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11.2 12 4l8 7.2"/><path d="M6.2 9.6V20h11.6V9.6"/></svg></button>
           <span class="tb-sep"></span>
-          <button data-act="settings" title="Cài đặt đồ thị"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9 17 7M7 17l-2.1 2.1"/></svg></button>
+          <button data-act="settings" title="Cài đặt đồ thị"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="2.6"/><path d="M12 2.8v2.4M12 18.8v2.4M2.8 12h2.4M18.8 12h2.4M5.5 5.5l1.7 1.7M16.8 16.8l1.7 1.7M18.5 5.5l-1.7 1.7M7.2 16.8l-1.7 1.7"/></svg></button>
         </div>
 
         <div class="trace-card" id="traceCard" hidden>
@@ -334,27 +402,7 @@
         <div class="toast-stack" id="toastStack" aria-live="polite"></div>
       </div>
 
-      <!-- COMMAND BAR -->
-      <div class="command-bar" role="search">
-        <span class="cmd-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m5 7 5 5-5 5M12 17h7"/></svg>
-        </span>
-        <input id="cmdInput" type="text" placeholder="2D: x^2-2, sin(x) · 3D: z=x^2+y^2, cube(3), sphere(2), cyl(1.5,3)" autocomplete="off" spellcheck="false" />
-        <button class="chip-btn" id="keyboardBtn" title="Bàn phím toán học">π √ ∑</button>
-        <button class="execute-btn" id="execBtn" title="Thực thi (Enter)">
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-          Thực thi
-        </button>
-        <button class="icon-btn util" id="clearCmdBtn" title="Xóa dòng lệnh">✕</button>
-      </div>
-      <div class="math-keys" id="mathKeys" hidden>
-        <button data-k="sin(">sin</button><button data-k="cos(">cos</button><button data-k="tan(">tan</button>
-        <button data-k="sqrt(">√</button><button data-k="^">xʸ</button><button data-k="pi">π</button>
-        <button data-k="*">×</button><button data-k="/">÷</button><button data-k="(">(</button>
-        <button data-k=")">)</button><button data-k="abs(">∣x∣</button><button data-k="exp(">eˣ</button>
-      </div>
-
-      <!-- FEATURE CARDS -->
+      <!-- FEATURE CARDS (giữ lại — ô lệnh đã dời lên panel Đại số kiểu GeoGebra) -->
       <div class="feature-row">
         <button class="feature-card" data-demo="geometry">
           <span class="f-icon g1"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="12" r="8"/><path d="M12 4v16M4 12h16"/></svg></span>
@@ -387,7 +435,7 @@
       <section class="insight-block">
         <div class="ib-head"><h3>Hướng dẫn nhanh</h3></div>
         <ol class="guide">
-          <li><b>1.</b> Nhập <code>x^2 - 2</code> vào ô lệnh, nhấn <b>Thực thi</b>.</li>
+          <li><b>1.</b> Nhập <code>x^2 - 2</code> vào ô lệnh trên panel <b>Đại số</b>, nhấn <b>⏎</b>.</li>
           <li><b>2.</b> Kéo nền để di chuyển, lăn chuột để thu / phóng.</li>
           <li><b>3.</b> Bật / tắt mắt để ẩn – hiện từng đồ thị.</li>
           <li><b>4.</b> Mở tab <b>Bảng</b> để đọc giá trị f(x).</li>
