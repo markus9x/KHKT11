@@ -130,6 +130,7 @@
           <button class="geo-clear" id="clearCmdBtn" title="Xóa dòng lệnh">✕</button>
           <button class="geo-exec" id="execBtn" title="Thực thi (Enter)">⏎</button>
         </div>
+        <div class="cmd-preview" id="cmdPreview" title="Xem trước công thức" hidden></div>
         <div class="geo-hint">2D: x^2-2, sin(x) · 3D: z=x^2+y^2, cube(3), sphere(2), cyl(1.5,3)</div>
         <div class="search-box">
           <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
@@ -141,54 +142,79 @@
           <span id="objectCount">0 đối tượng</span>
           <button class="link-btn" id="clearAllBtn">Xóa tất cả</button>
         </div>
-        <!-- Bàn phím toán học kiểu GeoGebra Calculator Suite (hình 3) -->
-        <div class="geo-keyboard" id="geoKeyboard">
+        <!-- Bàn phím GeoGebra Calculator Suite: 123 / f(x) / ABC / #&¬ (+3D) -->
+        <div class="geo-keyboard" id="geoKeyboard" hidden>
           <div class="geo-kb-tabs" role="tablist" aria-label="Chế độ bàn phím">
             <button data-kb="123" class="is-active">123</button>
+            <button data-kb="fx">f(x)</button>
             <button data-kb="abc">ABC</button>
             <button data-kb="sym">#&amp;¬</button>
+            <button data-kb="geo3d" title="Khối 3D Mind Math">3D</button>
+            <button id="kbClose" class="kb-close" title="Đóng bàn phím (Esc)">✕</button>
           </div>
-          <!-- 123: số + biến + so sánh — theo ảnh 1, style tối ảnh 5 -->
-          <div class="math-keys kb-pane kb-123 is-visible" data-pane-kb="123" id="mathKeys">
-            <button data-k="x">x</button><button data-k="y">y</button><button data-k="z">z</button><button data-k="π">π</button><button data-act="back" title="Xóa 1 ký tự">⌫</button>
-            <button data-k="7">7</button><button data-k="8">8</button><button data-k="9">9</button><button data-k="×">×</button><button data-k="÷">÷</button>
-            <button data-k="4">4</button><button data-k="5">5</button><button data-k="6">6</button><button data-k="+">+</button><button data-k="−">−</button>
-            <button data-k="1">1</button><button data-k="2">2</button><button data-k="3">3</button><button data-k="=">=</button><button data-k="^" title="Mũ: x^y">xʸ</button>
-            <button data-k="0">0</button><button data-k=".">.</button><button data-k=",">,</button><button data-k="("> (</button><button data-k=")">)</button>
-            <button data-k="²" title="Bình phương">x²</button><button data-k="√(" title="Căn bậc 2">√</button><button data-k="e">e</button><button data-k="abs(" title="Trị tuyệt đối">|.|</button><button data-k="°" title="Độ → radian">°</button>
-            <button data-k="<">&lt;</button><button data-k=">">&gt;</button><button data-k="≤">≤</button><button data-k="≥">≥</button><button data-k="ans" title="Kết quả trước">ans</button>
-            <button data-act="left" title="Sang trái">‹</button><button data-act="right" title="Sang phải">›</button><button data-act="clear" title="Xóa hết">C</button><button data-act="enter" class="kb-enter" style="grid-column:span 2" title="Thực thi (Enter)">⏎</button>
+
+          <!-- 123: y hệt GeoGebra hình 2 — trái 4 cột, phải 5 cột -->
+          <div class="kb-pane kb-123 is-visible" data-pane-kb="123" id="mathKeys">
+            <div class="kb-split">
+              <div class="kb-grid kb-4">
+                <button data-k="x">x</button><button data-k="y">y</button><button data-k="z">z</button><button data-k="π" title="Pi">π</button>
+                <button data-k="^2" title="Bình phương">□²</button><button data-k="^(" title="Mũ tổng quát">□<sup>□</sup></button><button data-k="sqrt(" title="Căn bậc 2">√□</button><button data-k="e" title="Số e">e</button>
+                <button data-k="<">&lt;</button><button data-k=">">&gt;</button><button data-k="≤" title="Nhỏ hơn hoặc bằng">≤</button><button data-k="≥" title="Lớn hơn hoặc bằng">≥</button>
+                <button data-k="(">(</button><button data-k=")">)</button><button data-k="abs(" title="Trị tuyệt đối">|□|</button><button data-k=",">,</button>
+              </div>
+              <div class="kb-grid kb-5">
+                <button data-k="7">7</button><button data-k="8">8</button><button data-k="9">9</button><button data-k="×">×</button><button data-k="÷">÷</button>
+                <button data-k="4">4</button><button data-k="5">5</button><button data-k="6">6</button><button data-k="+">+</button><button data-k="−">−</button>
+                <button data-k="1">1</button><button data-k="2">2</button><button data-k="3">3</button><button data-k="=">=</button><button data-act="back" class="kb-nav" title="Xóa 1 ký tự">⌫</button>
+                <button data-k="0">0</button><button data-k=".">.</button><button data-act="left" class="kb-nav" title="Sang trái">‹</button><button data-act="right" class="kb-nav" title="Sang phải">›</button><button data-act="enter" class="kb-nav kb-enter" title="Thực thi (Enter)">⏎</button>
+              </div>
+            </div>
           </div>
-          <!-- ABC: qwerty đầy đủ — theo ảnh 3 -->
+
+          <!-- f(x): y hệt GeoGebra hình 3 -->
+          <div class="kb-pane kb-fx" data-pane-kb="fx">
+            <div class="kb-split">
+              <div class="kb-grid kb-3">
+                <button data-k="sin(" title="sin(x)">sin</button><button data-k="cos(" title="cos(x)">cos</button><button data-k="tan(" title="tan(x)">tan</button>
+                <button data-k="asin(" title="arcsin">sin⁻¹</button><button data-k="acos(" title="arccos">cos⁻¹</button><button data-k="atan(" title="arctan">tan⁻¹</button>
+                <button data-k="ln(" title="Logarit tự nhiên">ln</button><button data-k="log10(" title="Logarit cơ số 10">log₁₀</button><button data-k="log_(" title="Logarit cơ số tùy ý: log_2(8)">log<sub>□</sub></button>
+                <button data-k="e^(" title="e mũ">e<sup>□</sup></button><button data-k="10^(" title="10 mũ">10<sup>□</sup></button><button data-k="nroot(" title="Căn bậc n: nroot(x,n)">ⁿ√□</button>
+              </div>
+              <div class="kb-grid kb-4">
+                <button data-k="%" title="Phần trăm">%</button><button data-k="!" title="Giai thừa">!</button><button data-k="$" title="Ký hiệu tiền tệ">$</button><button data-k="°" title="Độ → radian">°</button>
+                <button data-k="{">{</button><button data-k="}">}</button><button data-k=";">;</button><button data-k=":=" title="Gán">≔</button>
+                <button data-k="d/dx(" title="Đạo hàm">d/dx</button><button data-k="int(" title="Nguyên hàm">∫</button><button data-k="i" title="Đơn vị ảo">i</button><button data-act="back" class="kb-nav" title="Xóa 1 ký tự">⌫</button>
+                <button data-k="ans" title="Kết quả trước">ans</button><button data-act="left" class="kb-nav" title="Sang trái">‹</button><button data-act="right" class="kb-nav" title="Sang phải">›</button><button data-act="enter" class="kb-nav kb-enter" title="Thực thi (Enter)">⏎</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- ABC: y hệt GeoGebra hình 4 -->
           <div class="kb-pane kb-abc" data-pane-kb="abc">
-            <div class="qb-row"><button data-k="q">q</button><button data-k="w">w</button><button data-k="e">e</button><button data-k="r">r</button><button data-k="t">t</button><button data-k="y">y</button><button data-k="u">u</button><button data-k="i">i</button><button data-k="o">o</button><button data-k="p">p</button></div>
-            <div class="qb-row center"><button data-k="a">a</button><button data-k="s">s</button><button data-k="d">d</button><button data-k="f">f</button><button data-k="g">g</button><button data-k="h">h</button><button data-k="j">j</button><button data-k="k">k</button><button data-k="l">l</button></div>
-            <div class="qb-row"><button data-act="shift" title="Viết hoa">⇧</button><button data-k="z">z</button><button data-k="x">x</button><button data-k="c">c</button><button data-k="v">v</button><button data-k="b">b</button><button data-k="n">n</button><button data-k="m">m</button><button data-act="back">⌫</button></div>
-            <div class="qb-row"><button data-act="greek" title="Chữ Hy Lạp">αβγ</button><button data-k=",">,</button><button data-k="'" title="Nháy đơn">'</button><button data-k=" " class="qb-space" title="Dấu cách">␣</button><button data-act="left">‹</button><button data-act="right">›</button><button data-act="enter" class="kb-enter">⏎</button></div>
+            <div class="qb-row abc-r1"><button data-k="q">q</button><button data-k="w">w</button><button data-k="e">e</button><button data-k="r">r</button><button data-k="t">t</button><button data-k="y">y</button><button data-k="u">u</button><button data-k="i">i</button><button data-k="o">o</button><button data-k="p">p</button></div>
+            <div class="qb-row abc-r2"><button data-k="a">a</button><button data-k="s">s</button><button data-k="d">d</button><button data-k="f">f</button><button data-k="g">g</button><button data-k="h">h</button><button data-k="j">j</button><button data-k="k">k</button><button data-k="l">l</button></div>
+            <div class="qb-row abc-r3"><button data-act="shift" class="kb-nav" title="Viết hoa">⇧</button><button data-k="z">z</button><button data-k="x">x</button><button data-k="c">c</button><button data-k="v">v</button><button data-k="b">b</button><button data-k="n">n</button><button data-k="m">m</button><button data-act="back" class="kb-nav" title="Xóa 1 ký tự">⌫</button></div>
+            <div class="qb-row abc-r4"><button data-act="greek" class="kb-nav" title="Chữ Hy Lạp">αβγ</button><button data-k=",">,</button><button data-k="'" title="Nháy đơn">'</button><button data-k=" " class="qb-space" title="Dấu cách">␣</button><button data-act="left" class="kb-nav" title="Sang trái">‹</button><button data-act="right" class="kb-nav" title="Sang phải">›</button><button data-act="enter" class="kb-nav kb-enter" title="Thực thi (Enter)">⏎</button></div>
             <div class="greek-pop" id="greekPop" hidden>
               <button data-k="α">α</button><button data-k="β">β</button><button data-k="γ">γ</button><button data-k="θ">θ</button><button data-k="λ">λ</button><button data-k="μ">μ</button><button data-k="ρ">ρ</button><button data-k="σ">σ</button><button data-k="φ">φ</button><button data-k="ω">ω</button><button data-k="Δ">Δ</button><button data-k="Σ">Σ</button><button data-k="π">π</button>
             </div>
           </div>
-          <!-- #&¬: ký hiệu logic + khối 3D — theo ảnh 4 + giữ 3D của app -->
+
+          <!-- #&¬: y hệt GeoGebra hình 5 -->
           <div class="kb-pane kb-sym" data-pane-kb="sym">
-            <div class="kb-group">Logic &amp; tập hợp</div>
-            <div class="math-keys kb-sub">
-              <button data-k="∞" title="Vô cực">∞</button><button data-k="±" title="Cộng-trừ">±</button><button data-k="≠" title="Khác">≠</button><button data-k="∧" title="Và">∧</button><button data-k="∨" title="Hoặc">∨</button>
-              <button data-k="→" title="Suy ra">→</button><button data-k="¬" title="Phủ định">¬</button><button data-k="∀" title="Với mọi">∀</button><button data-k="∃" title="Tồn tại">∃</button><button data-k="⊗" title="Tích tensor">⊗</button>
-              <button data-k="∥" title="Song song">∥</button><button data-k="⊥" title="Vuông góc">⊥</button><button data-k="∈" title="Thuộc">∈</button><button data-k="⊂" title="Tập con">⊂</button><button data-k="⊆" title="Tập con hoặc bằng">⊆</button>
-              <button data-k="∠" title="Góc">∠</button><button data-k="[.]" title="Ma trận">[.::]</button><button data-k="[..]" title="Ma trận">[:::]</button><button data-k="[" title="Ngoặc vuông">[</button><button data-k="]" title="Ngoặc vuông">]</button>
-            </div>
-            <div class="kb-group">Dấu &amp; ký hiệu</div>
-            <div class="math-keys kb-sub">
-              <button data-k=":">:</button><button data-k="&amp;">&amp;</button><button data-k="@">@</button><button data-k="#">#</button><button data-k="$">$</button>
-              <button data-k=",">,</button><button data-k="'" title="Nháy đơn">'</button><button data-k="&quot;" title="Nháy kép">"</button><button data-k="''" title="Hai phẩy">''</button><button data-act="back">⌫</button>
-              <button data-act="left">‹</button><button data-act="right">›</button><button data-act="clear">C</button><button data-act="enter" class="kb-enter" style="grid-column:span 2">⏎</button>
-            </div>
-            <div class="kb-group">Khối 3D · Mind Math</div>
-            <div class="math-keys kb-sub">
+            <div class="qb-row sym-r1"><button data-k="∞" title="Vô cực">∞</button><button data-k="≐" title="Gán / bằng">≐</button><button data-k="≠" title="Khác">≠</button><button data-k="∧" title="Và">∧</button><button data-k="∨" title="Hoặc">∨</button><button data-k="→" title="Suy ra">→</button><button data-k="¬" title="Phủ định">¬</button><button data-k="∀" title="Với mọi">∀</button><button data-k="∃" title="Tồn tại">∃</button><button data-k="⊗" title="Tích tensor">⊗</button></div>
+            <div class="qb-row sym-r2"><button data-k="∥" title="Song song">∥</button><button data-k="⊥" title="Vuông góc">⊥</button><button data-k="∈" title="Thuộc">∈</button><button data-k="⊂" title="Tập con">⊂</button><button data-k="⊆" title="Tập con hoặc bằng">⊆</button><button data-k="∠" title="Góc">∠</button><button data-k="[.]" title="Ma trận">[⋮⋮]</button><button data-k="[..]" title="Ma trận">[⋮⋮⋮]</button></div>
+            <div class="qb-row sym-r3"><button data-k="[">[</button><button data-k="]">]</button><button data-k=":">:</button><button data-k="&amp;">&amp;</button><button data-k="@">@</button><button data-k="#">#</button><button data-k="$">$</button><button data-act="back" class="kb-nav" title="Xóa 1 ký tự">⌫</button></div>
+            <div class="qb-row sym-r4"><button data-k=",">,</button><button data-k="'" title="Nháy đơn">'</button><button data-k="&quot;" title="Nháy kép">"</button><button data-k="''" title="Hai phẩy">″</button><button data-k="°" title="Độ">°</button><button data-act="left" class="kb-nav" title="Sang trái">‹</button><button data-act="right" class="kb-nav" title="Sang phải">›</button><button data-act="enter" class="kb-nav kb-enter" title="Thực thi (Enter)">⏎</button></div>
+          </div>
+
+          <!-- 3D: khối Mind Math (giữ chức năng cũ, cùng style sáng) -->
+          <div class="kb-pane kb-3d" data-pane-kb="geo3d">
+            <div class="kb-grid kb-5">
               <button data-k="cube(">cube</button><button data-k="box(">box</button><button data-k="sphere(">sphere</button><button data-k="cyl(">cyl</button><button data-k="cone(">cone</button>
               <button data-k="pyramid(">pyramid</button><button data-k="disk(">disk</button><button data-k="square(">square</button><button data-k="rect(">rect</button><button data-k="tri(">tri</button>
             </div>
+            <div class="kb-hint3d">Vd: <b>cube(3)</b> · <b>sphere(2)</b> · <b>z=x^2+y^2</b> — Enter để vẽ 3D.</div>
           </div>
         </div>
       </section>
@@ -197,16 +223,194 @@
       <section class="side-view" data-pane="tools">
         <div class="side-head"><h2>Công cụ dựng hình</h2></div>
         <p class="side-desc">Chọn công cụ, sau đó thao tác trực tiếp trên mặt phẳng tọa độ.</p>
+        <div class="tdim-tabs" role="tablist" aria-label="Chế độ công cụ">
+          <button class="tdim-tab is-active" data-tdim="2d" role="tab" aria-selected="true" aria-controls="tdimPane2d">Hình 2D</button>
+          <button class="tdim-tab" data-tdim="3d" role="tab" aria-selected="false" aria-controls="tdimPane3d">Hình 3D</button>
+        </div>
         <div id="toolGrid">
-          <div class="tool-group-label">Cơ bản</div>
+        <div class="tdim-pane" id="tdimPane2d" role="tabpanel" aria-label="Công cụ 2D">
+          <div class="tool-group-label">Cơ bản · Basic</div>
           <div class="tool-subgrid">
-            <button class="tool-card is-active" data-tool="move" title="Di chuyển — kéo / chọn đối tượng"><i>➤</i><b>Di chuyển</b></button>
+            <button class="tool-card is-active" data-tool="move" title="Di chuyển — kéo nền / chọn đối tượng"><i>➤</i><b>Di chuyển</b></button>
             <button class="tool-card" data-tool="point" title="Điểm mới — nhấp để tạo điểm"><i>•</i><b>Điểm mới</b></button>
-            <button class="tool-card" data-tool="line" title="Đường thẳng — hai điểm tạo đường"><i>╱</i><b>Đường thẳng</b></button>
-            <button class="tool-card" data-tool="circle" title="Đường tròn — tâm + bán kính"><i>○</i><b>Đường tròn</b></button>
+            <button class="tool-card" data-tool="slider" title="Thanh trượt — tạo tham số a, b, c… dùng trong biểu thức"><i>◉</i><b>Thanh trượt</b></button>
+            <button class="tool-card" data-tool="intersect" title="Giao điểm — cắt các đồ thị với nhau"><i>⨉</i><b>Giao điểm</b></button>
+            <button class="tool-card" data-tool="extremum" title="Cực trị — tìm đỉnh / đáy của hàm đang chọn"><i>⌒</i><b>Cực trị</b></button>
+            <button class="tool-card" data-tool="root" title="Nghiệm — giao của hàm với trục Ox"><i>✕</i><b>Nghiệm</b></button>
+            <button class="tool-card" data-tool="regression" title="Hồi quy — đường thẳng khớp nhiều điểm (Enter để xong)"><i>∿</i><b>Hồi quy</b></button>
+          </div>
+          <div class="tool-group-label">Điểm · Points</div>
+          <div class="tool-subgrid">
+            <button class="tool-card" data-tool="pointon" title="Điểm thuộc — nhấp lên đường/hình để đặt điểm dính"><i>⊙</i><b>Thuộc</b></button>
+            <button class="tool-card" data-tool="attach" title="Dính / hủy dính — nhấp điểm rồi nhấp hình (nhấp lại điểm dính để gỡ)"><i>⚓</i><b>Dính/Gỡ</b></button>
+            <button class="tool-card" data-tool="complex" title="Số phức — điểm Z(a,b) minh họa phần thực/ảo"><i>ℂ</i><b>Số phức</b></button>
+            <button class="tool-card" data-tool="plist" title="Tạo danh sách — nhấp nhiều điểm, Enter để xong"><i>☰</i><b>Danh sách</b></button>
+          </div>
+          <div class="tool-group-label">Đường · Lines</div>
+          <div class="tool-subgrid">
+            <button class="tool-card" data-tool="segment" title="Đoạn thẳng — nối 2 điểm"><i>━</i><b>Đoạn thẳng</b></button>
+            <button class="tool-card" data-tool="line" title="Đường thẳng qua 2 điểm"><i>╱</i><b>Đường thẳng</b></button>
+            <button class="tool-card" data-tool="ray" title="Tia — gốc + hướng đi qua điểm 2"><i>→</i><b>Tia</b></button>
+            <button class="tool-card" data-tool="vector" title="Véc-tơ qua 2 điểm"><i>➔</i><b>Véc-tơ</b></button>
+            <button class="tool-card" data-tool="fixedseg" title="Đoạn cố định — nhấp điểm gốc rồi nhập độ dài + góc"><i>📏</i><b>Dài cố định</b></button>
+            <button class="tool-card" data-tool="vecfrom" title="Véc-tơ từ điểm — nhấp 2 điểm hướng rồi điểm đặt"><i>➤</i><b>Véc-tơ điểm</b></button>
+          </div>
+          <div class="tool-group-label">Dựng hình · Construct</div>
+          <div class="tool-subgrid">
+            <button class="tool-card" data-tool="midpoint" title="Trung điểm — nhấp 2 điểm"><i>◉</i><b>Trung điểm</b></button>
+            <button class="tool-card" data-tool="perp" title="Vuông góc — chọn đường trong Đại số rồi nhấp 1 điểm"><i>⊥</i><b>Vuông góc</b></button>
+            <button class="tool-card" data-tool="midperp" title="Trung trực — nhấp 2 điểm"><i>✚</i><b>Trung trực</b></button>
+            <button class="tool-card" data-tool="parallel" title="Song song — chọn đường trong Đại số rồi nhấp 1 điểm"><i>∥</i><b>Song song</b></button>
+            <button class="tool-card" data-tool="bisector" title="Phân giác — nhấp 3 điểm (đỉnh ở giữa)"><i>∠</i><b>Phân giác</b></button>
+            <button class="tool-card" data-tool="tangent" title="Tiếp tuyến — chọn đường rồi nhấp điểm chạm"><i>／</i><b>Tiếp tuyến</b></button>
+            <button class="tool-card" data-tool="locus" title="Quỹ tích (lấy mẫu) — chọn điểm phụ thuộc rồi dựng"><i>〜</i><b>Quỹ tích</b></button>
+          </div>
+          <div class="tool-group-label">Đường tròn · Circles</div>
+          <div class="tool-subgrid">
+            <button class="tool-card" data-tool="circle" title="Đường tròn — tâm + điểm vành"><i>○</i><b>Đường tròn</b></button>
+            <button class="tool-card" data-tool="compass" title="Compa — tâm + 2 điểm định bán kính"><i>⭘</i><b>Compa</b></button>
+            <button class="tool-card" data-tool="semicircle" title="Bán nguyệt — 2 điểm đầu đường kính"><i>◐</i><b>Bán nguyệt</b></button>
+            <button class="tool-card" data-tool="circle3" title="Tròn qua 3 điểm — nhấp 3 điểm không thẳng hàng"><i>◯</i><b>Tròn 3đ</b></button>
+            <button class="tool-card" data-tool="arc" title="Cung tròn — tâm + điểm đầu + điểm cuối"><i>◠</i><b>Cung tròn</b></button>
+            <button class="tool-card" data-tool="arc3" title="Cung qua 3 điểm"><i>⌒</i><b>Cung 3đ</b></button>
+            <button class="tool-card" data-tool="sector" title="Hình quạt — tâm + điểm đầu + điểm cuối"><i>◣</i><b>Hình quạt</b></button>
+            <button class="tool-card" data-tool="sector3" title="Quạt qua 3 điểm"><i>◤</i><b>Quạt 3đ</b></button>
+          </div>
+          <div class="tool-group-label">Cônic · Conics</div>
+          <div class="tool-subgrid">
+            <button class="tool-card" data-tool="ellipse" title="Elíp — 2 tiêu điểm + 1 điểm trên elíp"><i>⬭</i><b>Elíp</b></button>
+            <button class="tool-card" data-tool="parabola" title="Parabôn — tiêu điểm + 2 điểm thuộc chuẩn"><i>◡</i><b>Parabôn</b></button>
+            <button class="tool-card" data-tool="hyperbola" title="Hypebôn — 2 tiêu điểm + 1 điểm"><i>⋈</i><b>Hypebôn</b></button>
+            <button class="tool-card" data-tool="conic5" title="Cônic qua 5 điểm"><i>❋</i><b>Cônic 5đ</b></button>
+          </div>
+          <div class="tool-group-label">Đa giác · Polygons</div>
+          <div class="tool-subgrid">
+            <button class="tool-card" data-tool="polygon" title="Đa giác — nhấp các đỉnh, khép tại điểm đầu / Enter"><i>⬠</i><b>Đa giác</b></button>
+            <button class="tool-card" data-tool="regpoly" title="Đa giác đều — tâm + đỉnh + số cạnh"><i>⬢</i><b>Đa giác đều</b></button>
+            <button class="tool-card" data-tool="vecpoly" title="Đa giác véc-tơ — chọn đa giác rồi nhấp 2 điểm véc-tơ"><i>⬣</i><b>Đa giác véctơ</b></button>
+            <button class="tool-card" data-tool="oriented" title="Đa giác có hướng — như đa giác, lưu CW/CCW"><i>⟳</i><b>Có hướng</b></button>
+          </div>
+          <div class="tool-group-label">Đo · Measure</div>
+          <div class="tool-subgrid">
+            <button class="tool-card" data-tool="angle" title="Góc — nhấp 3 điểm (đỉnh ở giữa)"><i>∠</i><b>Góc</b></button>
+            <button class="tool-card" data-tool="anglefixed" title="Góc cho trước — đỉnh + 1 điểm + nhập độ"><i>📐</i><b>Góc cố định</b></button>
+            <button class="tool-card" data-tool="distance" title="Khoảng cách — nhấp 2 điểm"><i>↔</i><b>Khoảng cách</b></button>
+            <button class="tool-card" data-tool="area" title="Diện tích — nhấp vào một đa giác"><i>▦</i><b>Diện tích</b></button>
+            <button class="tool-card" data-tool="slope" title="Hệ số góc — chọn đường rồi nhấp vị trí nhãn"><i>⁄</i><b>Hệ số góc</b></button>
+          </div>
+            <div class="tool-group-label">Chỉnh sửa · Edit</div>
+          <div class="tool-subgrid">
+            <button class="tool-card" data-tool="select" title="Chọn đối tượng — nhấp gần đối tượng"><i>☝</i><b>Chọn</b></button>
+            <button class="tool-card" data-tool="pan" title="Di chuyển khung nhìn — kéo nền"><i>✥</i><b>Kéo nền</b></button>
+            <button class="tool-card" data-tool="delete" title="Xóa — nhấp vào đối tượng để xóa"><i>🗑</i><b>Xóa</b></button>
+            <button class="tool-card" data-tool="toggle" title="Hiện / ẩn đối tượng"><i>👁</i><b>Hiện/ẩn</b></button>
+            <button class="tool-card" data-tool="names" title="Hiện / ẩn tên điểm"><i>AA</i><b>Tên</b></button>
+            <button class="tool-card" data-tool="style" title="Sao chép kiểu — nhấp nguồn rồi nhấp đích"><i>🎨</i><b>Chép kiểu</b></button>
+          </div>
+          <div class="tool-group-label">Biến hình · Transform</div>
+          <div class="tool-subgrid">
+            <button class="tool-card" data-tool="refline" title="Đối xứng qua đường — chọn điểm rồi nhấp 2 điểm trục"><i>⇋</i><b>ĐX đường</b></button>
+            <button class="tool-card" data-tool="refpoint" title="Đối xứng qua điểm — chọn điểm rồi nhấp tâm"><i>⁘</i><b>ĐX điểm</b></button>
+            <button class="tool-card" data-tool="translate" title="Tịnh tiến — chọn điểm rồi nhấp 2 điểm véc-tơ"><i>⇥</i><b>Tịnh tiến</b></button>
+            <button class="tool-card" data-tool="rotate" title="Quay — chọn điểm, nhấp tâm, nhập góc"><i>⟳</i><b>Quay</b></button>
+            <button class="tool-card" data-tool="dilate" title="Vị tự — chọn điểm, nhấp tâm, nhập tỉ số"><i>⤢</i><b>Vị tự</b></button>
+            <button class="tool-card" data-tool="refpointline" title="Đối xứng điểm qua đường — nhấp điểm rồi nhấp lên đường"><i>⇄</i><b>ĐX điểm-đường</b></button>
+          </div>
+          <div class="tool-group-label">Chú thích · Media</div>
+          <div class="tool-subgrid">
+            <button class="tool-card" data-tool="text" title="Chèn chữ — nhấp vị trí rồi nhập nội dung"><i>T</i><b>Chèn chữ</b></button>
+            <button class="tool-card" data-tool="image" title="Chèn ảnh — nhấp vị trí rồi chọn file"><i>🖼</i><b>Chèn ảnh</b></button>
           </div>
         </div>
-        <div class="tip-box">Mẹo: dùng con lăn chuột để thu / phóng, kéo nền để di chuyển khung nhìn.</div>
+        <div class="tdim-pane" id="tdimPane3d" role="tabpanel" aria-label="Công cụ 3D" hidden>
+          <div class="tool-group-label">Cơ bản · Basic 3D</div>
+          <div class="tool-subgrid">
+            <button class="tool-card" data-tool="m3d-move" title="Di chuyển 3D — kéo để xoay orbit, Shift+kéo để pan"><i>⟲</i><b>Di chuyển</b></button>
+            <button class="tool-card" data-tool="m3d-point" title="Điểm 3D — nhấp lên nền để tạo điểm (Alt+kéo để nâng Z)"><i>•</i><b>Điểm 3D</b></button>
+            <button class="tool-card" data-tool="m3d-pointon" title="Điểm trên đối tượng — nhấp lên đoạn/đường/mặt/cầu"><i>⊙</i><b>Thuộc 3D</b></button>
+            <button class="tool-card" data-tool="m3d-midpoint" title="Trung điểm 3D — nhấp 2 điểm"><i>◉</i><b>Trung điểm</b></button>
+          </div>
+          <div class="tool-group-label">Đường · Lines 3D</div>
+          <div class="tool-subgrid">
+            <button class="tool-card" data-tool="m3d-segment" title="Đoạn thẳng 3D — nhấp 2 điểm"><i>━</i><b>Đoạn</b></button>
+            <button class="tool-card" data-tool="m3d-line" title="Đường thẳng 3D qua 2 điểm"><i>╱</i><b>Đường</b></button>
+            <button class="tool-card" data-tool="m3d-ray" title="Tia 3D — gốc + điểm hướng"><i>→</i><b>Tia</b></button>
+            <button class="tool-card" data-tool="m3d-vector" title="Véc-tơ 3D qua 2 điểm"><i>➔</i><b>Véc-tơ</b></button>
+            <button class="tool-card" data-tool="m3d-vecfrom" title="Véc-tơ từ điểm — 2 điểm hướng + điểm đặt"><i>➤</i><b>Véc-tơ điểm</b></button>
+            <button class="tool-card" data-tool="m3d-parallel" title="Đường song song 3D — chọn đường rồi nhấp điểm"><i>∥</i><b>Song song</b></button>
+            <button class="tool-card" data-tool="m3d-perp" title="Đường vuông góc 3D — chọn đường/mặt rồi nhấp điểm"><i>⊥</i><b>Vuông góc</b></button>
+            <button class="tool-card" data-tool="m3d-polygon" title="Đa giác 3D — nhấp nhiều điểm, Enter/nhấp đúp để xong"><i>⬠</i><b>Đa giác</b></button>
+          </div>
+          <div class="tool-group-label">Mặt phẳng · Planes</div>
+          <div class="tool-subgrid">
+            <button class="tool-card" data-tool="m3d-plane3" title="Mặt phẳng qua 3 điểm — chọn 3 điểm không thẳng hàng"><i>▱</i><b>MP 3 điểm</b></button>
+            <button class="tool-card" data-tool="m3d-planepar" title="Mặt phẳng song song — chọn mặt rồi nhấp điểm"><i>═</i><b>MP song song</b></button>
+            <button class="tool-card" data-tool="m3d-planeperp" title="Mặt phẳng vuông góc — chọn đường rồi nhấp điểm"><i>⊟</i><b>MP vuông góc</b></button>
+          </div>
+          <div class="tool-group-label">Tròn &amp; Cầu · Circles &amp; Spheres</div>
+          <div class="tool-subgrid">
+            <button class="tool-card" data-tool="m3d-circleCP" title="Đường tròn 3D: tâm + điểm vành (mặt chứa = MP qua tâm ⊥ trục mặc định)"><i>○</i><b>Tròn T+Đ</b></button>
+            <button class="tool-card" data-tool="m3d-circleCR" title="Đường tròn 3D: tâm + nhập bán kính"><i>◯</i><b>Tròn T+R</b></button>
+            <button class="tool-card" data-tool="m3d-circle3" title="Đường tròn qua 3 điểm trong không gian"><i>◌</i><b>Tròn 3đ</b></button>
+            <button class="tool-card" data-tool="m3d-sphereCP" title="Mặt cầu: tâm + điểm trên cầu"><i>⊕</i><b>Cầu T+Đ</b></button>
+            <button class="tool-card" data-tool="m3d-sphereCR" title="Mặt cầu: tâm + nhập bán kính"><i>⊗</i><b>Cầu T+R</b></button>
+          </div>
+          <div class="tool-group-label">Khối · Solids</div>
+          <div class="tool-subgrid">
+            <button class="tool-card" data-tool="m3d-cube" title="Lập phương: 2 điểm kề + hướng (hộp thoại chiều cao)"><i>▣</i><b>Lập phương</b></button>
+            <button class="tool-card" data-tool="m3d-tetra" title="Tứ diện đều từ 2 điểm"><i>△</i><b>Tứ diện</b></button>
+            <button class="tool-card" data-tool="m3d-prism" title="Lăng trụ: chọn đa giác đáy + nhập chiều cao"><i>⬓</i><b>Lăng trụ</b></button>
+            <button class="tool-card" data-tool="m3d-pyramid" title="Hình chóp: chọn đa giác đáy + nhấp đỉnh"><i>⯅</i><b>Hình chóp</b></button>
+            <button class="tool-card" data-tool="m3d-cyl" title="Hình trụ: 2 điểm trục + nhập bán kính"><i>▤</i><b>Hình trụ</b></button>
+            <button class="tool-card" data-tool="m3d-cone" title="Hình nón: 2 điểm trục + nhập bán kính"><i>▽</i><b>Hình nón</b></button>
+            <button class="tool-card" data-tool="m3d-extrude" title="Đùn đa giác thành lăng trụ (nhập chiều cao)"><i>⇪</i><b>Đùn khối</b></button>
+            <button class="tool-card" data-tool="m3d-net" title="Khai triển (Net) — chọn khối để mở/gập có animation"><i>🗺</i><b>Khai triển</b></button>
+          </div>
+          <div class="tool-group-label">Giao &amp; Đo · Intersect &amp; Measure</div>
+          <div class="tool-subgrid">
+            <button class="tool-card" data-tool="m3d-intersect" title="Giao của 2 mặt — nhấp 2 đối tượng (MP∩MP, MP∩Cầu, Cầu∩Cầu, MP∩Khối)"><i>⨉</i><b>Giao 2 mặt</b></button>
+            <button class="tool-card" data-tool="m3d-dist" title="Khoảng cách 3D — nhấp 2 điểm"><i>↔</i><b>Khoảng cách</b></button>
+            <button class="tool-card" data-tool="m3d-angle" title="Góc 3D — nhấp 3 điểm (đỉnh giữa)"><i>∠</i><b>Góc</b></button>
+            <button class="tool-card" data-tool="m3d-area" title="Diện tích — nhấp đa giác/mặt tròn"><i>▦</i><b>Diện tích</b></button>
+            <button class="tool-card" data-tool="m3d-volume" title="Thể tích — nhấp khối/cầu/trụ/nón"><i>◈</i><b>Thể tích</b></button>
+          </div>
+          <div class="tool-group-label">Biến hình · Transform 3D</div>
+          <div class="tool-subgrid">
+            <button class="tool-card" data-tool="m3d-translate" title="Tịnh tiến 3D — chọn điểm rồi nhấp 2 điểm véc-tơ"><i>⇥</i><b>Tịnh tiến</b></button>
+            <button class="tool-card" data-tool="m3d-refplane" title="Đối xứng qua mặt — chọn điểm rồi nhấp mặt phẳng"><i>⇋</i><b>ĐX mặt</b></button>
+            <button class="tool-card" data-tool="m3d-refpoint" title="Đối xứng qua điểm — chọn điểm rồi nhấp tâm"><i>⁘</i><b>ĐX điểm</b></button>
+            <button class="tool-card" data-tool="m3d-rotline" title="Quay quanh đường — chọn điểm, nhấp 2 điểm trục, nhập góc (có animation)"><i>⟳</i><b>Quay trục</b></button>
+            <button class="tool-card" data-tool="m3d-dilate" title="Vị tự 3D — chọn điểm, nhấp tâm, nhập tỉ số"><i>⤢</i><b>Vị tự</b></button>
+          </div>
+          <div class="tool-group-label">Chỉnh sửa · Edit 3D</div>
+          <div class="tool-subgrid">
+            <button class="tool-card" data-tool="m3d-select" title="Chọn 3D — nhấp gần đối tượng"><i>☝</i><b>Chọn</b></button>
+            <button class="tool-card" data-tool="m3d-delete" title="Xóa 3D — nhấp đối tượng"><i>🗑</i><b>Xóa</b></button>
+            <button class="tool-card" data-tool="m3d-toggle" title="Hiện/ẩn 3D"><i>👁</i><b>Hiện/ẩn</b></button>
+            <button class="tool-card" data-tool="m3d-names" title="Hiện/ẩn tên 3D"><i>AA</i><b>Tên</b></button>
+            <button class="tool-card" data-tool="m3d-style" title="Chép kiểu 3D — nhấp nguồn rồi đích"><i>🎨</i><b>Chép kiểu</b></button>
+            <button class="tool-card" data-tool="m3d-front" title="Nhìn chính diện vật đang chọn (camera cinematic)"><i>◎</i><b>Chính diện</b></button>
+            <button class="tool-card" data-tool="m3d-demo" title="Dựng scene demo WOW: chóp + mặt + cầu + giao tuyến"><i>✨</i><b>Demo WOW</b></button>
+          </div>
+          <div class="tool-group-label">Mặt cong mẫu</div>
+          <div class="suggest-list" id="suggestList3d">
+            <button data-expr="z = x^2 + y^2" data-goto3d="1">Paraboloid z=x²+y²</button>
+            <button data-expr="z = sin(sqrt(x^2+y^2))" data-goto3d="1">Sóng tròn sin(r)</button>
+            <button data-expr="z = x*y/4" data-goto3d="1">Mặt yên ngựa z=xy/4</button>
+          </div>
+          <div class="m3d-preview-hint" id="m3dHint">Chọn công cụ 3D rồi thao tác trực tiếp trên sân khấu. <b>ESC</b> hủy · click lại tool để reset.</div>
+          <div class="m3d-net-panel" id="m3dNetPanel" hidden>
+            <div class="m3d-net-head"><b>Khai triển (Net)</b><span id="m3dNetName"></span></div>
+            <div class="m3d-net-row">
+              <button class="mini-btn" id="m3dNetPlay">▶ Mở</button>
+              <button class="mini-btn" id="m3dNetReset">⟲ Gập lại</button>
+            </div>
+            <label class="m3d-net-slider">Tiến trình <input type="range" id="m3dNetSlider" min="0" max="100" value="0" /></label>
+          </div>
+          <div class="tip-box">Mẹo 3D: nhấp <b>gần điểm tím</b> để bắt điểm (snap) · <b>Alt+kéo điểm</b> để nâng/hạ Z · Enter chốt đa giác.</div>
+        </div>
+        </div>
+        <div class="tip-box">Mẹo: lăn chuột thu/phóng, kéo nền di chuyển. Đa giác / Hồi quy / Danh sách: <b>Enter</b> hoặc <b>nhấp đúp</b> để xong; đa giác khép lại tại điểm đầu. <b>ESC</b> hủy thao tác đang dựng.</div>
       </section>
 
       <!-- VIEW: TABLE -->
@@ -335,7 +539,7 @@
         <label class="setting-row"><span>Lưới chi tiết</span><input type="checkbox" id="setMinor" checked /></label>
         <label class="setting-row"><span>Hiện nhãn trục</span><input type="checkbox" id="setLabels" checked /></label>
         <label class="setting-row"><span>Hiệu ứng phát sáng</span><input type="checkbox" id="setGlow" checked /></label>
-        <label class="setting-row"><span>Sóng ánh sáng nền</span><input type="checkbox" id="setWave" checked /></label>
+
         <label class="setting-row"><span>Lưới mặt 3D</span><input type="checkbox" id="setMesh3d" checked /></label>
         <label class="setting-row"><span>Tự xoay 3D</span><input type="checkbox" id="setSpin3d" /></label>
         <label class="setting-row col"><span>Mật độ lưới: <b id="gridVal">1.0</b></span><input type="range" id="setGrid" min="0.5" max="2" step="0.5" value="1" /></label>
@@ -370,7 +574,12 @@
           <button data-v3="mesh" class="is-active" title="Bật/tắt lưới mặt">▦ Lưới</button>
           <button data-v3="spin" title="Tự xoay (trình bày)">▶ Xoay</button>
           <button data-v3="top" title="Nhìn từ trên">⬒ Top</button>
-          <span class="v3-hint">Kéo để xoay · Lăn chuột để zoom · Shift+kéo để di chuyển</span>
+          <button data-v3="front" title="Nhìn chính diện (Ox-Oz)">▭ Trước</button>
+          <button data-v3="right" title="Nhìn từ bên phải">▥ Phải</button>
+          <button data-v3="iso" title="Góc isometric">⬔ Iso</button>
+          <button data-v3="focus" title="Hướng camera về vật đang chọn">◎ Focus</button>
+          <button data-v3="full" title="Toàn màn hình 3D">⛶ Full</button>
+          <span class="v3-hint">Kéo để xoay · Lăn chuột để zoom · Shift+kéo để di chuyển · Alt+kéo điểm = nâng Z</span>
         </div>
 
         <div class="graph-toolbar" role="toolbar" aria-label="Công cụ khung nhìn">
@@ -384,9 +593,6 @@
           <button data-act="settings" title="Cài đặt đồ thị"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="2.6"/><path d="M12 2.8v2.4M12 18.8v2.4M2.8 12h2.4M18.8 12h2.4M5.5 5.5l1.7 1.7M16.8 16.8l1.7 1.7M18.5 5.5l-1.7 1.7M7.2 16.8l-1.7 1.7"/></svg></button>
         </div>
 
-        <div class="trace-card" id="traceCard" hidden>
-          <b id="traceTitle">f(x)</b><span id="traceValue">—</span>
-        </div>
         <div class="toast-stack" id="toastStack" aria-live="polite"></div>
       </div>
 
@@ -450,43 +656,10 @@
         </div>
       </section>
 
-      <section class="insight-block">
-        <div class="ib-head"><h3>Khám phá 3D ⧉</h3></div>
-        <div class="suggest-list" id="suggestList3d">
-          <div class="suggest-group">Mặt cong</div>
-          <button data-expr="z = x^2 + y^2" data-goto3d="1">Paraboloid z=x²+y²</button>
-          <button data-expr="z = sin(sqrt(x^2+y^2))" data-goto3d="1">Sóng tròn sin(r)</button>
-          <button data-expr="z = x*y/4" data-goto3d="1">Mặt yên ngựa z=xy/4</button>
-          <div class="suggest-group">Khối cơ bản</div>
-          <div class="suggest-grid">
-            <button data-expr="cube(3)" data-goto3d="1">⬛ Lập phương 3</button>
-            <button data-expr="box(4,3,2)" data-goto3d="1">📦 Hộp 4×3×2</button>
-            <button data-expr="sphere(2)" data-goto3d="1">⚽ Cầu r=2</button>
-            <button data-expr="cyl(1.5,3)" data-goto3d="1">🛢️ Trụ r1.5 h3</button>
-            <button data-expr="cone(1.8,3)" data-goto3d="1">🔻 Nón r1.8 h3</button>
-            <button data-expr="pyramid(3,3)" data-goto3d="1">🔺 Chóp 3×h3</button>
-          </div>
-          <div class="suggest-group">Hình phẳng (nền z=0)</div>
-          <div class="suggest-grid">
-            <button data-expr="square(3)" data-goto3d="1">◼ Vuông 3</button>
-            <button data-expr="rect(4,2.5)" data-goto3d="1">▭ Chữ nhật 4×2.5</button>
-            <button data-expr="disk(2)" data-goto3d="1">● Tròn r=2</button>
-            <button data-expr="tri(3)" data-goto3d="1">▲ Tam giác 3</button>
-          </div>
-          <div class="suggest-group">Điểm</div>
-          <button data-expr="(1,2,3)" data-goto3d="1">Điểm 3D (1,2,3)</button>
-        </div>
-      </section>
     </aside>
     <button class="insight-expand" id="insightExpand" title="Mở panel phải" aria-label="Mở panel phải" hidden>«</button>
   </div>
 
-  <!-- ATMOSPHERIC WAVE -->
-  <div class="atmosphere" id="atmosphere" aria-hidden="true">
-    <svg class="wave w1" viewBox="0 0 1440 120" preserveAspectRatio="none"><path d="M0,64 C240,96 420,16 720,48 C1020,80 1200,32 1440,64 L1440,120 L0,120 Z"/></svg>
-    <svg class="wave w2" viewBox="0 0 1440 120" preserveAspectRatio="none"><path d="M0,80 C260,40 480,104 760,72 C1040,40 1220,96 1440,72 L1440,120 L0,120 Z"/></svg>
-    <div class="glow-line"></div>
-  </div>
 </div>
 
 <script src="./app.js"></script>
