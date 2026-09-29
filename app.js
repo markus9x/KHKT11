@@ -5607,6 +5607,8 @@ function resetView() {
 function bindChrome() {
   $$(".rail-item").forEach(b => b.addEventListener("click", () => {
     const v = b.dataset.view;
+    if (v === "home") { showHomePage(); return; }
+    if (state.ui && state.ui.activeView === "home") { hideHomePage({ instant: true, keepRail: true, updateHash: false }); state.ui.activeView = "workspace"; try { localStorage.setItem(MM_HOME_KEY, "workspace"); } catch {} mmHomeSetHash(false); document.body.classList.remove("mm-home-open"); }
     const wasActive = b.classList.contains("is-active");
     const leftHidden = document.body.classList.contains("hide-left");
     // click lại icon đang mở -> thu gọn panel; panel đang ẩn -> mở ra
@@ -6051,7 +6053,37 @@ function bindChrome() {
   $$("#markusChips button").forEach(b => b.addEventListener("click", () => markusSend(b.dataset.q)));
   const mkGear = $("#markusSettingsBtn"), mkSet = $("#markusSettings");
   if (mkGear) mkGear.addEventListener("click", () => { if (mkSet) mkSet.hidden = !mkSet.hidden; });
+  /* Đọc toàn bộ ô cài đặt vào cfg (gọi trước mỗi lần gửi/test để không bao giờ dùng key cũ) */
+  const mkProv = $("#markusProvider"), mkEp = $("#markusEndpoint"), mkEpRow = $("#markusEndpointRow");
   const mkModel = $("#markusModel"), mkKey = $("#markusKey");
+  const markusRefreshEpRow = () => {
+    if (mkEpRow) mkEpRow.hidden = (markusCfg.provider || "google") === "google";
+  };
+  markusRefreshEpRow();
+  if (mkProv) {
+    mkProv.value = markusCfg.provider || "google";
+    mkProv.addEventListener("change", () => {
+      const oldP = markusCfg.provider || "google";
+      const np = mkProv.value;
+      markusCfg.provider = np;
+      // đổi hãng mà model còn là default của hãng cũ -> gợi ý default hãng mới
+      if (!markusCfg.model || markusCfg.model === MARKUS_DEFAULT_MODEL[oldP]) {
+        markusCfg.model = MARKUS_DEFAULT_MODEL[np] || markusCfg.model;
+        if (mkModel) mkModel.value = markusCfg.model;
+      }
+      markusStore.saveCfg(markusCfg);
+      markusRefreshEpRow();
+      markusSetStatus(markusCfg.key ? "on" : "off", markusCfg.key ? "online · " + markusProviderLabel() : "offline");
+      toast("Markus dùng " + markusProviderLabel() + (np === "google" ? "" : " — model: " + markusCfg.model), "ok");
+    });
+  }
+  if (mkEp) {
+    mkEp.value = markusCfg.endpoint || "";
+    mkEp.addEventListener("change", () => {
+      markusCfg.endpoint = mkEp.value.trim(); markusStore.saveCfg(markusCfg);
+      toast(markusCfg.endpoint ? "Đã lưu endpoint." : "Endpoint trống — dùng mặc định của hãng.", "ok");
+    });
+  }
   if (mkModel) {
     mkModel.value = markusCfg.model || "gemini-3.6-flash";
     mkModel.addEventListener("change", () => {
@@ -6062,20 +6094,41 @@ function bindChrome() {
   if (mkKey) {
     mkKey.value = markusCfg.key || "";
     mkKey.addEventListener("change", () => {
-      markusCfg.key = mkKey.value.trim(); markusStore.saveCfg(markusCfg);
-      markusSetStatus(markusCfg.key ? "on" : "off", markusCfg.key ? "online" : "offline");
-      toast(markusCfg.key ? "Đã lưu API key cho Markus." : "Đã xóa key — Markus chạy offline.", "ok");
+      const k = mkKey.value.trim();
+      const oldP = markusCfg.provider || "google";
+      markusCfg.key = k;
+      // tự nhận máy chủ từ tiền tố key để "dán key là chạy ngay"
+      const g = markusGuessProvider(k);
+      if (k && g && g !== oldP) {
+        markusCfg.provider = g;
+        if (!markusCfg.model || markusCfg.model === MARKUS_DEFAULT_MODEL[oldP]) {
+          markusCfg.model = MARKUS_DEFAULT_MODEL[g];
+          if (mkModel) mkModel.value = markusCfg.model;
+        }
+        if (mkProv) mkProv.value = g;
+        markusRefreshEpRow();
+        toast("Đã nhận key " + markusProviderLabel() + " — Markus trả lời ngay.", "ok");
+      } else {
+        toast(k ? "Đã lưu API key cho Markus." : "Đã xóa key — Markus chạy offline.", "ok");
+      }
+      markusStore.saveCfg(markusCfg);
+      markusSetStatus(markusCfg.key ? "on" : "off", markusCfg.key ? "online · " + markusProviderLabel() : "offline");
     });
   }
   const mkShow = $("#markusKeyShow");
   if (mkShow) mkShow.addEventListener("click", () => { if (mkKey) mkKey.type = mkKey.type === "password" ? "text" : "password"; });
   const mkTest = $("#markusTestBtn");
   if (mkTest) mkTest.addEventListener("click", async () => {
+    markusSyncCfgFromUI();
+    if (!markusCfg.key) { toast("Dán API key trước (Google/OpenAI/Grok/DeepSeek… hãng nào cũng được).", "err"); return; }
+    if ((markusCfg.provider || "google") !== "google" && !markusProviderBase()) {
+      toast("Nhập endpoint trong ⚙ trước (dạng https://…/v1).", "err"); return;
+    }
     mkTest.textContent = "Đang kiểm tra…"; mkTest.disabled = true;
     try {
       const r = await markusCallAPI("Trả lời đúng một từ: OK");
-      markusSetStatus("on", "online");
-      toast("Markus kết nối thành công: " + r.slice(0, 60), "ok");
+      markusSetStatus("on", "online · " + markusProviderLabel());
+      toast("Markus kết nối thành công (" + markusProviderLabel() + "): " + r.slice(0, 60), "ok");
     } catch (e) {
       markusSetStatus("off", "offline");
       toast("Kết nối lỗi: " + e.message, "err");
@@ -6470,25 +6523,46 @@ function trigTick(ts) {
 
 /* ============================================================================
    MARKUS — trợ lý AI toán học (điểm đột phá của dự án)
-   - Gọi TRỰC TIẾP Gemini native: POST
+   - Dán BẤT KỲ API key nào (Google / OpenAI / Grok / DeepSeek / OpenRouter…)
+     là trả lời ngay — không bắt buộc key Google.
+   - Google -> Gemini native: POST
      https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent
      header `x-goog-api-key: <key>` (key AQ. thế hệ mới BẮT BUỘC đi đường native,
      không dùng OpenAI-compatible — sẽ 400/401).
-   - Key + model lưu localStorage, test kết nối trong pane.
+   - Hãng khác -> chuẩn OpenAI: POST {base}/chat/completions, header Bearer.
+   - Provider + endpoint + model lưu localStorage, tự đoán provider từ tiền tố
+     key (AIza/AQ. -> Google, xai- -> Grok, sk-or- -> OpenRouter, sk- -> OpenAI),
+     test kết nối trong pane.
    - Mất mạng / key lỗi / CORS → Markus offline (engine toán nội bộ) vẫn trả lời,
      nên demo KHKT không bao giờ "chết".
    - Markus vẽ được lên đồ thị: mọi biểu thức trong khối ```mm ... ``` sẽ tự
      thực thi qua addObject (tối đa 3/khúc trả lời).
    ============================================================================ */
 const MARKUS_DEFAULT_KEY = "";
+/* Máy chủ AI Markus hỗ trợ: Gemini native + mọi endpoint chuẩn OpenAI
+   (/chat/completions). Dán key hãng nào cũng chạy, không bắt buộc key Google. */
+const MARKUS_PROVIDERS = {
+  google:     { label: "Google Gemini", base: "" },
+  openai:     { label: "OpenAI", base: "https://api.openai.com/v1" },
+  xai:        { label: "Grok (xAI)", base: "https://api.x.ai/v1" },
+  deepseek:   { label: "DeepSeek", base: "https://api.deepseek.com/v1" },
+  openrouter: { label: "OpenRouter", base: "https://openrouter.ai/api/v1" },
+  custom:     { label: "Tùy chỉnh", base: "" },
+};
+const MARKUS_DEFAULT_MODEL = {
+  google: "gemini-3.6-flash", openai: "gpt-4o-mini", xai: "grok-3-mini",
+  deepseek: "deepseek-chat", openrouter: "openai/gpt-4o-mini", custom: "gpt-4o-mini",
+};
 const markusStore = {
   loadCfg() {
     try {
       const c = JSON.parse(localStorage.getItem("mind-math-markus") || "null") || {};
       // di trú model cũ đã bị Google khai tử (2.0/1.5/2.5-flash) sang model sống
       if (!c.model || /^(gemini-(1\.5-flash|2\.0-flash|2\.5-flash))$/.test(c.model)) c.model = "gemini-3.6-flash";
-      return { model: "gemini-3.6-flash", key: MARKUS_DEFAULT_KEY, ...c };
-    } catch { return { model: "gemini-3.6-flash", key: MARKUS_DEFAULT_KEY }; }
+      if (!c.provider || !MARKUS_PROVIDERS[c.provider]) c.provider = "google";
+      if (typeof c.endpoint !== "string") c.endpoint = "";
+      return { provider: "google", model: MARKUS_DEFAULT_MODEL.google, endpoint: "", key: MARKUS_DEFAULT_KEY, ...c };
+    } catch { return { provider: "google", model: MARKUS_DEFAULT_MODEL.google, endpoint: "", key: MARKUS_DEFAULT_KEY }; }
   },
   saveCfg(c) { try { localStorage.setItem("mind-math-markus", JSON.stringify(c)); } catch {} },
   loadHist() { try { return JSON.parse(localStorage.getItem("mind-math-markus-hist") || "[]"); } catch { return []; } },
@@ -6516,6 +6590,30 @@ function markusSetStatus(mode, label) {
   if (!el) return;
   el.classList.toggle("off", mode === "off");
   el.innerHTML = `<i></i>${escapeHtml(label)}`;
+  try { el.title = String(label || ""); } catch {}
+}
+/* Đọc key/model/provider/endpoint hiện trên ô nhập vào cfg (tránh dùng key cũ
+   khi người dùng dán key xong bấm gửi ngay mà chưa blur khỏi ô nhập). */
+function markusSyncCfgFromUI() {
+  try {
+    const pv = $("#markusProvider"), ep = $("#markusEndpoint"),
+          md = $("#markusModel"), ky = $("#markusKey");
+    if (pv && pv.value && MARKUS_PROVIDERS[pv.value]) markusCfg.provider = pv.value;
+    if (ep) markusCfg.endpoint = String(ep.value || "").trim();
+    if (md && String(md.value || "").trim()) markusCfg.model = String(md.value).trim();
+    if (ky) markusCfg.key = String(ky.value || "").trim();
+    markusStore.saveCfg(markusCfg);
+  } catch {}
+}
+/* Đoán máy chủ từ tiền tố key: AIza/AQ. -> Google, xai- -> Grok,
+   sk-or- -> OpenRouter, sk- -> OpenAI. Không đoán được -> null (giữ nguyên). */
+function markusGuessProvider(key) {
+  const k = String(key || "").trim();
+  if (/^(AIza|AQ\.)/.test(k)) return "google";
+  if (/^xai-/i.test(k)) return "xai";
+  if (/^sk-or-/i.test(k)) return "openrouter";
+  if (/^sk-/i.test(k)) return "openai";
+  return null;
 }
 function markusEscapeAttr(s) {
   return String(s).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -6831,11 +6929,17 @@ function markusShowDrawResults(res) {
   box.scrollTop = box.scrollHeight;
   res.filter(r => r.ok).forEach(r => toast(r.msg, "ok"));
 }
-async function markusCallAPI(userText) {
-  const model = (markusCfg.model || "gemini-3.6-flash").trim();
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
-  const sys =
-    `Bạn là Markus, trợ lý toán học tiếng Việt bên trong phần mềm Mind Math (đồ thị 2D/3D, ` +
+function markusProviderLabel() {
+  return (MARKUS_PROVIDERS[markusCfg.provider] || MARKUS_PROVIDERS.google).label;
+}
+function markusProviderBase() {
+  const p = markusCfg.provider || "google";
+  if (p === "google") return "";
+  if (p === "custom") return String(markusCfg.endpoint || "").trim().replace(/\/+$/, "");
+  return MARKUS_PROVIDERS[p].base;
+}
+function markusSystemPrompt() {
+  return `Bạn là Markus, trợ lý toán học tiếng Việt bên trong phần mềm Mind Math (đồ thị 2D/3D, ` +
     `đường tròn lượng giác, bảng giá trị, trang tính). Trả lời NGẮN GỌN, đúng trọng tâm, tiếng Việt. ` +
     `Bối cảnh đồ thị hiện tại: ${markusContextText()} ` +
     `QUY TẮC CÔNG THỨC (bắt buộc): mọi công thức toán phải dùng LaTeX chuẩn để app render đẹp: ` +
@@ -6850,6 +6954,42 @@ async function markusCallAPI(userText) {
     `circle3d(cx,cy,cz,r,nx,ny,nz), sphere3d(cx,cy,cz,r), poly3d((x,y,z),(x,y,z),(x,y,z)), ` +
     `cube3(ax,ay,az,bx,by,bz,h), tetra3(ax,ay,az,bx,by,bz), cyl3/cone3(ax,ay,az,bx,by,bz,r). ` +
     `Không nhét giải thích vào trong khối mm. Tối đa 3 biểu thức/lần.`;
+}
+/* Gọi mọi endpoint chuẩn OpenAI: POST {base}/chat/completions, Bearer key.
+   Dùng cho OpenAI, Grok, DeepSeek, OpenRouter và endpoint tùy chỉnh. */
+async function markusCallOpenAI(userText, base) {
+  const model = (markusCfg.model || MARKUS_DEFAULT_MODEL.openai).trim();
+  const messages = [{ role: "system", content: markusSystemPrompt() }];
+  for (const m of markusHist.slice(-8)) {
+    if (m.role !== "user" && m.role !== "markus") continue;
+    messages.push({ role: m.role === "user" ? "user" : "assistant", content: String(m.text || "").slice(0, 1500) });
+  }
+  messages.push({ role: "user", content: userText.slice(0, 2000) });
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 30000);
+  try {
+    const headers = { "Content-Type": "application/json", "Authorization": "Bearer " + (markusCfg.key || "") };
+    if ((markusCfg.provider || "") === "openrouter") {
+      try { headers["HTTP-Referer"] = location.href; headers["X-Title"] = "Mind Math"; } catch {}
+    }
+    const res = await fetch(base + "/chat/completions", {
+      method: "POST", signal: ctrl.signal, headers,
+      body: JSON.stringify({ model, messages, temperature: 0.7, max_tokens: 2048 }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const msg = data?.error?.message || `HTTP ${res.status}`;
+      throw new Error(msg);
+    }
+    const text = String(data?.choices?.[0]?.message?.content || "").trim();
+    if (!text) throw new Error("API không trả lời (kiểm tra tên model trong ⚙).");
+    return text;
+  } finally { clearTimeout(timer); }
+}
+async function markusCallGemini(userText) {
+  const model = (markusCfg.model || MARKUS_DEFAULT_MODEL.google).trim();
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
+  const sys = markusSystemPrompt();
   const contents = markusHist.slice(-8).filter(m => m.role === "user" || m.role === "markus")
     .map(m => ({ role: m.role === "user" ? "user" : "model", parts: [{ text: m.text.slice(0, 1500) }] }));
   contents.push({ role: "user", parts: [{ text: userText.slice(0, 2000) }] });
@@ -6875,6 +7015,15 @@ async function markusCallAPI(userText) {
     if (!text) throw new Error(data?.promptFeedback?.blockReason ? "Bị chặn an toàn: " + data.promptFeedback.blockReason : "API không trả lời.");
     return text;
   } finally { clearTimeout(timer); }
+}
+/* Dispatcher: key hãng nào gọi đường nấy — Google đi native, còn lại đi
+   chuẩn OpenAI (/chat/completions). Lỗi key/endpoint nào cũng rớt về offline. */
+async function markusCallAPI(userText) {
+  const prov = markusCfg.provider || "google";
+  if (prov === "google") return markusCallGemini(userText);
+  const base = markusProviderBase();
+  if (!base) throw new Error("Chưa có endpoint — mở ⚙ Markus nhập base URL dạng https://…/v1.");
+  return markusCallOpenAI(userText, base);
 }
 /* --- Markus offline: engine toán nội bộ, không cần mạng --- */
 function markusOfflineReply(q) {
@@ -7005,8 +7154,10 @@ function markusTypewriter(el, fullText, done) {
 }
 async function markusSend(text) {
   const input = $("#markusInput");
+  if (markusBusy) return;
+  markusSyncCfgFromUI(); // BUGFIX: đọc key/model/provider mới nhất từ ô nhập (kẻo dán key xong chat ngay vẫn offline)
   const raw = (text ?? input?.value ?? "").trim();
-  if (!raw || markusBusy) return;
+  if (!raw) return;
   markusBusy = true;
   const sendBtn = $("#markusSend"); if (sendBtn) sendBtn.disabled = true;
   markusHist.push({ role: "user", text: raw });
@@ -7027,9 +7178,9 @@ async function markusSend(text) {
   } else {
     try {
       reply = await markusCallAPI(raw);
-      markusSetStatus("on", "online");
+      markusSetStatus("on", "online · " + markusProviderLabel());
     } catch (e) {
-      reply = `⚠️ Gọi Gemini lỗi (${e.message}). Tôi trả lời offline nhé:\n\n` + markusOfflineReply(raw);
+      reply = `⚠️ Gọi ${markusProviderLabel()} lỗi (${e.message}). Tôi trả lời offline nhé:\n\n` + markusOfflineReply(raw);
       offline = true;
       markusSetStatus("off", "offline");
     }
@@ -7044,17 +7195,20 @@ async function markusSend(text) {
   box.appendChild(row);
   const bubble = row.querySelector(".markus-bubble");
   markusTypewriter(bubble, reply, () => {
-    bubble.innerHTML = markusMd(reply) +
-      (offline ? `<div class="markus-src">Markus · offline — vẫn đầy đủ toán nội bộ</div>`
-               : `<div class="">Markus · ${escapeHtml(markusCfg.model)}</div>`);
-    box.scrollTop = box.scrollHeight;
-    try { markusTypeset(bubble); } catch {}
-    try { markusShowDrawResults(markusApplyDrawings(reply)); } catch (e) { toast(e.message, "err"); }
-    refreshMarkusContext();
+    try {
+      bubble.innerHTML = markusMd(reply) +
+        (offline ? `<div class="markus-src">Markus · offline — vẫn đầy đủ toán nội bộ</div>`
+                 : `<div class="markus-src">Markus · ${escapeHtml(markusProviderLabel())} · ${escapeHtml(markusCfg.model)}</div>`);
+      box.scrollTop = box.scrollHeight;
+      try { markusTypeset(bubble); } catch {}
+      try { markusShowDrawResults(markusApplyDrawings(reply)); } catch (e) { toast(e.message, "err"); }
+      refreshMarkusContext();
+    } catch (e) { try { bubble.textContent = reply; } catch {} }
+    // BUGFIX: chỉ mở khóa khi đã render xong — tránh 2 hiệu ứng gõ chữ đè nhau
+    markusBusy = false;
+    if (sendBtn) sendBtn.disabled = false;
+    input?.focus();
   });
-  markusBusy = false;
-  if (sendBtn) sendBtn.disabled = false;
-  input?.focus();
 }
 
 /* ============================================================================
@@ -8251,6 +8405,447 @@ function mmDemoWOW() {
   } catch (e) { toast(e.message, "err"); }
 }
 
+/* =========================
+   MIND MATH HOME — welcome screen
+   Overlay mở đầu, không chạm engine toán học.
+   ========================= */
+state.ui = state.ui || { activeView: "home", lastPane: "algebra" };
+const MM_HOME_KEY = "mind-math-home-view";
+const MM_HOME_HASH = "#home";
+let mmHomeRaf = 0, mmHomeT = 1.2, mmHomeBound = false;
+
+function isHomeVisible() {
+  const el = $("#mmHome");
+  return !!(el && el.classList.contains("is-visible"));
+}
+function mmHomeReduced() {
+  try { return window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch { return false; }
+}
+function mmHomeSyncRail(view) {
+  $$(".rail-item").forEach(x => {
+    const on = x.dataset.view === view;
+    x.classList.toggle("is-active", on);
+    x.setAttribute("aria-pressed", on ? "true" : "false");
+  });
+}
+function mmHomeSetHash(home) {
+  try {
+    if (location.hash.includes("mm=")) return; // không phá share link
+    if (home) { if (location.hash !== MM_HOME_HASH) history.replaceState(null, "", MM_HOME_HASH); }
+    else if (location.hash === MM_HOME_HASH) history.replaceState(null, "", location.pathname + location.search);
+  } catch {}
+}
+function mmHomeSizeCanvas() {
+  const cv = $("#mmHomeCanvas");
+  if (!cv) return null;
+  const r = cv.getBoundingClientRect();
+  const dpr = Math.min(1.5, window.devicePixelRatio || 1);
+  const w = Math.max(50, r.width), h = Math.max(50, r.height);
+  if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) {
+    cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+  }
+  const g = cv.getContext("2d");
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return { g, w, h };
+}
+function mmHomeDrawFrame() {
+  const sized = mmHomeSizeCanvas();
+  if (!sized) return;
+  const { g, w, h } = sized, t = mmHomeT;
+  g.clearRect(0, 0, w, h);
+  const cx = w / 2, cy = h * 0.46;
+  // trục tọa độ mờ
+  g.strokeStyle = "rgba(226,232,255,.10)"; g.lineWidth = 1;
+  g.beginPath(); g.moveTo(0, cy); g.lineTo(w, cy); g.stroke();
+  g.beginPath(); g.moveTo(cx, 0); g.lineTo(cx, h); g.stroke();
+  // sóng sin chính — dải ribbon phát sáng nhẹ
+  g.strokeStyle = "rgba(167,139,250,.22)"; g.lineWidth = 1.3;
+  g.beginPath();
+  for (let x = 0; x <= w; x += 6) {
+    const y = cy + Math.sin(x * 0.016 + t) * Math.min(64, h * 0.09);
+    if (x === 0) g.moveTo(x, y); else g.lineTo(x, y);
+  }
+  g.strokeStyle = "rgba(167,139,250,.06)"; g.lineWidth = 5; g.stroke();
+  g.strokeStyle = "rgba(196,181,253,.20)"; g.lineWidth = 1.3; g.stroke();
+  // sóng phụ
+  g.strokeStyle = "rgba(56,189,248,.11)"; g.lineWidth = 1;
+  g.beginPath();
+  for (let x = 0; x <= w; x += 8) {
+    const y = cy + Math.cos(x * 0.011 - t * 0.7) * Math.min(90, h * 0.13);
+    if (x === 0) g.moveTo(x, y); else g.lineTo(x, y);
+  }
+  g.stroke();
+  // parabol mờ góc phải-dưới
+  const px = w * 0.74, py = h * 0.74;
+  g.strokeStyle = "rgba(56,189,248,.13)";
+  g.beginPath();
+  for (let dx = -230; dx <= 230; dx += 8) {
+    const X = px + dx, Y = py - (dx * dx) * 0.0011;
+    if (dx === -230) g.moveTo(X, Y); else g.lineTo(X, Y);
+  }
+  g.stroke();
+  // đường tròn + tâm + véc-tơ (góc phải-trên)
+  const ox = w * 0.78, oy = h * 0.34, rr = Math.max(60, Math.min(w, h) * 0.14);
+  g.strokeStyle = "rgba(232,121,249,.14)";
+  g.beginPath(); g.arc(ox, oy, rr, 0, Math.PI * 2); g.stroke();
+  g.strokeStyle = "rgba(232,121,249,.10)";
+  g.beginPath(); g.moveTo(ox - rr, oy); g.lineTo(ox + rr, oy); g.stroke();
+  g.beginPath(); g.moveTo(ox, oy - rr); g.lineTo(ox, oy + rr); g.stroke();
+  const av = t * 0.25;
+  const ex = ox + Math.cos(av) * rr, ey = oy + Math.sin(av) * rr;
+  g.strokeStyle = "rgba(226,232,255,.16)";
+  g.beginPath(); g.moveTo(ox, oy); g.lineTo(ex, ey); g.stroke();
+  g.fillStyle = "rgba(226,232,255,.28)";
+  [[ox, oy], [ex, ey], [ox + rr, oy], [ox, oy - rr]].forEach(([X, Y]) => {
+    g.beginPath(); g.arc(X, Y, 2.2, 0, Math.PI * 2); g.fill();
+  });
+  // điểm trôi — "toán học đang tồn tại phía sau"
+  g.fillStyle = "rgba(196,181,253,.20)";
+  for (let i = 0; i < 26; i++) {
+    const sx = ((i * 197.3) % 1) * w;
+    const sy = ((i * 311.7) % 1) * h;
+    const X = (sx + t * (6 + (i % 5) * 3)) % w;
+    const Y = sy + Math.sin(t * 0.8 + i) * 8;
+    g.globalAlpha = 0.25 + 0.55 * Math.abs(Math.sin(i * 1.7 + t * 0.5));
+    g.beginPath(); g.arc(X, Y, (i % 3 === 0) ? 2 : 1.3, 0, Math.PI * 2); g.fill();
+  }
+  g.globalAlpha = 1;
+}
+function mmHomeLoop() {
+  mmHomeRaf = 0;
+  if (!isHomeVisible()) return;
+  if (mmHomeReduced()) { try { mmHomeDrawFrame(); mmHomeHeroFrame(); } catch {} return; }
+  mmHomeT += 0.006;
+  try { mmHomeDrawFrame(); mmHomeHeroFrame(); } catch {}
+  mmHomeRaf = requestAnimationFrame(mmHomeLoop);
+}
+function mmHomeStartBg() {
+  const cv = $("#mmHomeCanvas");
+  if (!cv) return;
+  try { mmHomeSizeCanvas(); mmHomeDrawFrame(); mmHomeHeroFrame(); } catch {}
+  if (mmHomeReduced()) return;
+  if (!mmHomeRaf) mmHomeRaf = requestAnimationFrame(mmHomeLoop);
+}
+/* Hero hình học bên phải: mặt sóng wireframe + đĩa đỡ + panel sóng hạt + vệt sáng.
+   Thuần canvas 2D, tự vẽ theo công thức z = f(x,y) — đúng thứ Mind Math thực sự vẽ. */
+function mmHomeHeroSize() {
+  const cv = $("#mmHomeHeroCanvas");
+  if (!cv) return null;
+  const r = cv.getBoundingClientRect();
+  const dpr = Math.min(1.5, window.devicePixelRatio || 1);
+  const w = Math.max(50, r.width), h = Math.max(50, r.height);
+  if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) {
+    cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+  }
+  const g = cv.getContext("2d");
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return { g, w, h };
+}
+function mmHomeRR(g, x, y, w, h, r) {
+  r = Math.min(r, w / 2, h / 2);
+  g.beginPath();
+  g.moveTo(x + r, y);
+  g.lineTo(x + w - r, y); g.arcTo(x + w, y, x + w, y + r, r);
+  g.lineTo(x + w, y + h - r); g.arcTo(x + w, y + h, x + w - r, y + h, r);
+  g.lineTo(x + r, y + h); g.arcTo(x, y + h, x, y + h - r, r);
+  g.lineTo(x, y + r); g.arcTo(x, y, x + r, y, r);
+  g.closePath();
+}
+function mmHomeHeroFrame() {
+  const sized = mmHomeHeroSize();
+  if (!sized) return;
+  const { g, w, h } = sized, t = mmHomeT;
+  g.clearRect(0, 0, w, h);
+  g.lineJoin = "round"; g.lineCap = "round";
+  const small = w < 440;
+  const S = Math.max(38, Math.min(w, h) * 0.148);
+  const cx = w * 0.44, cy = h * 0.52;
+  const A = 0.7 + t * 0.07, cA = Math.cos(A), sA = Math.sin(A);
+  const sT = 0.58, cT = 0.81;
+  const N = small ? 16 : 22, R = 2.1;
+  const zOf = (x, y) => {
+    const r = Math.sqrt(x * x + y * y);
+    return (x * x - y * y) * 0.22 + Math.sin(r * 2.1 - t * 1.3) * 0.13;
+  };
+  const proj = (x, y) => {
+    const z = zOf(x, y);
+    const xr = x * cA - y * sA, yr = x * sA + y * cA;
+    return [cx + xr * S, cy + (yr * sT - z * cT) * S, z, yr];
+  };
+  const colFor = (z, a) => {
+    const k = Math.max(0, Math.min(1, (z + 0.85) / 1.7));
+    return `rgba(${Math.round(167 + (125 - 167) * k)},${Math.round(139 + (211 - 139) * k)},${Math.round(250 + (252 - 250) * k)},${a})`;
+  };
+  // hào quang sau đỉnh sóng — chiều sâu
+  const pk = proj(0.5, -0.5);
+  const halo = g.createRadialGradient(pk[0], pk[1], 0, pk[0], pk[1], S * 1.9);
+  halo.addColorStop(0, "rgba(139,92,246,.14)"); halo.addColorStop(1, "rgba(139,92,246,0)");
+  g.fillStyle = halo;
+  g.fillRect(pk[0] - S * 1.9, pk[1] - S * 1.9, S * 3.8, S * 3.8);
+  // đĩa đỡ dưới mặt sóng
+  const baseY = cy + S * 1.5, rx = S * 2.5, ry = S * 0.52;
+  g.strokeStyle = "rgba(139,92,246,.16)";
+  for (let k = 3; k >= 1; k--) {
+    g.lineWidth = k * 2;
+    g.beginPath(); g.ellipse(cx, baseY + 20, rx + k * 7, ry + k * 3, 0, 0, Math.PI * 2); g.stroke();
+  }
+  const bodyGrad = g.createLinearGradient(0, baseY, 0, baseY + 22);
+  bodyGrad.addColorStop(0, "rgba(109,72,238,.45)"); bodyGrad.addColorStop(1, "rgba(30,20,80,.05)");
+  g.fillStyle = bodyGrad;
+  g.beginPath();
+  g.moveTo(cx - rx, baseY);
+  g.lineTo(cx - rx, baseY + 20);
+  g.ellipse(cx, baseY + 20, rx, ry, 0, Math.PI, 0, true);
+  g.lineTo(cx + rx, baseY);
+  g.closePath(); g.fill();
+  g.fillStyle = "rgba(124,58,237,.30)";
+  g.beginPath(); g.ellipse(cx, baseY, rx, ry, 0, 0, Math.PI * 2); g.fill();
+  g.strokeStyle = "rgba(196,181,253,.55)"; g.lineWidth = 1.2;
+  g.beginPath(); g.ellipse(cx, baseY, rx, ry, 0, 0, Math.PI * 2); g.stroke();
+  // vành quỹ đạo nghiêng + mặt trăng quay quanh đĩa
+  const rot = -0.32, rrx = S * 3.05, rry = S * 0.95;
+  g.strokeStyle = "rgba(167,139,250,.30)"; g.lineWidth = 1.4;
+  g.beginPath(); g.ellipse(cx, baseY + 20, rrx, rry, rot, 0, Math.PI * 2); g.stroke();
+  const ma = t * 0.45, cR = Math.cos(rot), sR = Math.sin(rot);
+  const mxp = cx + rrx * Math.cos(ma) * cR - rry * Math.sin(ma) * sR;
+  const myp = baseY + 20 + rrx * Math.cos(ma) * sR + rry * Math.sin(ma) * cR;
+  g.strokeStyle = "rgba(232,121,249,.6)"; g.lineWidth = 2;
+  g.beginPath(); g.ellipse(cx, baseY + 20, rrx, rry, rot, ma - 0.9, ma); g.stroke();
+  g.fillStyle = "rgba(232,121,249,.25)";
+  g.beginPath(); g.arc(mxp, myp, 5.5, 0, Math.PI * 2); g.fill();
+  g.fillStyle = "rgba(240,230,255,.95)";
+  g.beginPath(); g.arc(mxp, myp, 2.6, 0, Math.PI * 2); g.fill();
+  g.lineWidth = 1;
+  // mặt sóng: tô từng ô theo độ sâu (painter) + viền lưới — có khối 3D thật
+  const P = [];
+  for (let i = 0; i <= N; i++) {
+    const row = [];
+    const x = -R + (2 * R * i) / N;
+    for (let j = 0; j <= N; j++) row.push(proj(x, -R + (2 * R * j) / N));
+    P.push(row);
+  }
+  const quads = [];
+  for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) {
+    const a = P[i][j], b = P[i + 1][j], c = P[i + 1][j + 1], d = P[i][j + 1];
+    quads.push([(a[3] + b[3] + c[3] + d[3]) / 4, (a[2] + b[2] + c[2] + d[2]) / 4, a, b, c, d]);
+  }
+  quads.sort((p, q) => p[0] - q[0]);
+  g.lineWidth = 1;
+  for (const q of quads) {
+    g.fillStyle = colFor(q[1], 0.10);
+    g.strokeStyle = colFor(q[1], 0.30);
+    g.beginPath();
+    g.moveTo(q[2][0], q[2][1]); g.lineTo(q[3][0], q[3][1]);
+    g.lineTo(q[4][0], q[4][1]); g.lineTo(q[5][0], q[5][1]);
+    g.closePath(); g.fill(); g.stroke();
+  }
+  // sống sáng trên mặt + hạt lưới
+  const mid = N >> 1;
+  g.strokeStyle = "rgba(125,211,252,.75)"; g.lineWidth = 1.6;
+  g.beginPath();
+  for (let j = 0; j <= N; j++) { const p = P[mid][j]; if (j === 0) g.moveTo(p[0], p[1]); else g.lineTo(p[0], p[1]); }
+  g.stroke();
+  g.lineWidth = 1;
+  for (let i = 0; i <= N; i += 3) for (let j = 0; j <= N; j += 3) {
+    const p = P[i][j];
+    g.fillStyle = colFor(p[2], 0.5);
+    g.beginPath(); g.arc(p[0], p[1], 1.4, 0, Math.PI * 2); g.fill();
+  }
+  // vệ tinh hình học: khối lập phương + mặt cầu — phòng lab hình học
+  const bob1 = Math.sin(t * 0.8) * 5, bob2 = Math.cos(t * 0.66) * 6;
+  const cbx = w * 0.12, cby = h * 0.24 + bob1, ce = S * 0.34;
+  const iX = ce * 0.866, iY = ce * 0.5;
+  const T = [cbx, cby - ce], TR = [cbx + iX, cby - iY], C0 = [cbx, cby], TL = [cbx - iX, cby - iY];
+  const T2 = [cbx, cby], TR2 = [cbx + iX, cby - iY + ce], C2 = [cbx, cby + ce], TL2 = [cbx - iX, cby - iY + ce];
+  g.fillStyle = "rgba(139,92,246,.10)";
+  g.beginPath(); g.moveTo(T[0], T[1]); g.lineTo(TR[0], TR[1]); g.lineTo(C0[0], C0[1]); g.lineTo(TL[0], TL[1]); g.closePath(); g.fill();
+  g.strokeStyle = "rgba(196,181,253,.45)";
+  g.beginPath();
+  g.moveTo(T[0], T[1]); g.lineTo(TR[0], TR[1]); g.lineTo(C0[0], C0[1]); g.lineTo(TL[0], TL[1]); g.closePath();
+  g.moveTo(T2[0], T2[1]); g.lineTo(TR2[0], TR2[1]); g.lineTo(C2[0], C2[1]); g.lineTo(TL2[0], TL2[1]); g.closePath();
+  g.moveTo(T[0], T[1]); g.lineTo(T2[0], T2[1]);
+  g.moveTo(TR[0], TR[1]); g.lineTo(TR2[0], TR2[1]);
+  g.moveTo(C0[0], C0[1]); g.lineTo(C2[0], C2[1]);
+  g.moveTo(TL[0], TL[1]); g.lineTo(TL2[0], TL2[1]);
+  g.stroke();
+  const spx = w * 0.10, spy = h * 0.56 + bob2, sr = S * 0.26;
+  g.strokeStyle = "rgba(125,211,252,.5)";
+  g.beginPath(); g.arc(spx, spy, sr, 0, Math.PI * 2); g.stroke();
+  g.strokeStyle = "rgba(125,211,252,.35)";
+  g.beginPath(); g.ellipse(spx, spy, sr, sr * 0.38, 0.4, 0, Math.PI * 2); g.stroke();
+  g.beginPath(); g.ellipse(spx, spy, sr * 0.42, sr, 0.4, 0, Math.PI * 2); g.stroke();
+  g.fillStyle = "rgba(224,242,254,.9)";
+  g.beginPath(); g.arc(spx - sr * 0.3, spy - sr * 0.35, 1.8, 0, Math.PI * 2); g.fill();
+  g.strokeStyle = "rgba(196,181,253,.20)";
+  g.setLineDash([3, 5]);
+  g.beginPath(); g.moveTo(cbx, cby + ce); g.quadraticCurveTo(w * 0.10, h * 0.44, spx, spy - sr); g.stroke();
+  g.setLineDash([]);
+  // hạt bay lên từ mặt sóng
+  for (let i = 0; i < 22; i++) {
+    const fx = ((i * 173.3) % 1 + 1) % 1;
+    const sx = cx + (fx - 0.5) * S * 3.6 + Math.sin(t * 0.9 + i * 2.1) * 6;
+    const top = h * 0.10, span = Math.max(60, baseY - top);
+    const yy = baseY - ((t * (13 + (i % 3) * 6) + i * 47) % span);
+    const k = (baseY - yy) / span;
+    g.fillStyle = `rgba(216,204,255,${((1 - k) * 0.5).toFixed(3)})`;
+    g.beginPath(); g.arc(sx, yy, 0.8 + (1 - k) * 0.9, 0, Math.PI * 2); g.fill();
+  }
+  // panel sóng hạt bay phía trên-phải
+  const bob = Math.sin(t * 0.9) * 4;
+  const pw = Math.min(w * 0.38, 190), ph = Math.min(h * 0.30, 150);
+  const px0 = w - pw - 10, py0 = 10 + bob;
+  mmHomeRR(g, px0, py0, pw, ph, 10);
+  g.fillStyle = "rgba(14,10,36,.78)"; g.fill();
+  g.strokeStyle = "rgba(167,139,250,.55)"; g.lineWidth = 1.2; g.stroke();
+  const DC = 18, DR = 9, mX = 13, mY = 12;
+  for (let i = 0; i < DC; i++) for (let j = 0; j < DR; j++) {
+    const nx = i / (DC - 1), ny = j / (DR - 1);
+    const d = Math.sin(nx * 7.5 + t * 2.1) * Math.cos(ny * 5.4 - t * 1.5);
+    const k = d * 0.5 + 0.5;
+    g.fillStyle = `rgba(216,204,255,${(0.22 + 0.5 * k).toFixed(3)})`;
+    g.beginPath();
+    g.arc(px0 + mX + nx * (pw - mX * 2), py0 + mY + ny * (ph - mY * 2), 0.9 + 1.2 * k, 0, Math.PI * 2);
+    g.fill();
+  }
+  // vệt sáng từ mặt sóng bay lên panel
+  const seeds = [[0.9, -0.4], [1.35, 0.35], [0.35, -1.15]];
+  seeds.forEach(([sx, sy], k) => {
+    const st = proj(sx, sy);
+    const ex = px0 + pw * (0.22 + 0.28 * k), ey = py0 + ph;
+    const mx = (st[0] + ex) / 2 + 34, my = (st[1] + ey) / 2 - 46;
+    const grad = g.createLinearGradient(st[0], st[1], ex, ey);
+    grad.addColorStop(0, "rgba(232,121,249,.05)"); grad.addColorStop(1, "rgba(232,121,249,.55)");
+    g.strokeStyle = grad; g.lineWidth = 2;
+    g.beginPath(); g.moveTo(st[0], st[1]); g.quadraticCurveTo(mx, my, ex, ey); g.stroke();
+    g.lineWidth = 1;
+    for (let m = 0; m < 2; m++) {
+      const tau = (t * 0.22 + k * 0.37 + m * 0.5) % 1;
+      const qx = (1 - tau) * (1 - tau) * st[0] + 2 * (1 - tau) * tau * mx + tau * tau * ex;
+      const qy = (1 - tau) * (1 - tau) * st[1] + 2 * (1 - tau) * tau * my + tau * tau * ey;
+      g.fillStyle = "rgba(232,121,249,.22)";
+      g.beginPath(); g.arc(qx, qy, 4, 0, Math.PI * 2); g.fill();
+      g.fillStyle = "rgba(240,230,255,.9)";
+      g.beginPath(); g.arc(qx, qy, 1.8, 0, Math.PI * 2); g.fill();
+    }
+  });
+  g.globalAlpha = 1;
+}
+function mmHomeStopBg() {
+  if (mmHomeRaf) { try { cancelAnimationFrame(mmHomeRaf); } catch {} mmHomeRaf = 0; }
+}
+function showHomePage(opts = {}) {
+  const el = $("#mmHome");
+  if (!el) return;
+  if (!state.ui) state.ui = { activeView: "home", lastPane: "algebra" };
+  // nhớ pane workspace đang dùng để quay lại đúng chỗ
+  try {
+    const cur = document.querySelector('.rail-item.is-active');
+    if (cur && cur.dataset.view && cur.dataset.view !== "home") state.ui.lastPane = cur.dataset.view;
+  } catch {}
+  state.ui.activeView = "home";
+  const first = !el.classList.contains("is-visible");
+  el.classList.remove("is-leaving");
+  if (first) { void el.offsetWidth; } // restart entrance choreography
+  el.classList.add("is-visible");
+  document.body.classList.add("mm-home-open");
+  mmHomeSyncRail("home");
+  try { localStorage.setItem(MM_HOME_KEY, "home"); } catch {}
+  if (opts.updateHash !== false) mmHomeSetHash(true);
+  mmHomeStartBg();
+  if (!opts.noFocus) {
+    window.setTimeout(() => {
+      const b = $("#mmHomeStart");
+      if (b && isHomeVisible()) { try { b.focus({ preventScroll: true }); } catch { try { b.focus(); } catch {} } }
+    }, mmHomeReduced() ? 0 : 650);
+  }
+}
+function hideHomePage(opts = {}) {
+  const el = $("#mmHome");
+  if (!el || !el.classList.contains("is-visible")) {
+    if (state.ui) state.ui.activeView = "workspace";
+    return;
+  }
+  if (!state.ui) state.ui = { activeView: "workspace", lastPane: "algebra" };
+  state.ui.activeView = "workspace";
+  const restore = state.ui.lastPane || "algebra";
+  const done = () => {
+    el.classList.remove("is-visible", "is-leaving");
+    document.body.classList.remove("mm-home-open");
+    mmHomeStopBg();
+    try { if (typeof draw === "function") draw(); } catch {}
+    try { if (typeof resize === "function") resize(); } catch {}
+  };
+  if (opts.instant || mmHomeReduced()) {
+    el.classList.remove("is-leaving");
+    done();
+  } else {
+    el.classList.add("is-leaving"); // cinematic dissolve + scale nhẹ
+    window.setTimeout(done, 560);
+  }
+  if (!opts.keepRail) {
+    mmHomeSyncRail(restore);
+    // đảm bảo pane tương ứng hiện + panel trái mở (workspace dùng được ngay)
+    $$(".side-view").forEach(p => p.classList.toggle("is-visible", p.dataset.pane === restore));
+    document.body.classList.remove("hide-left");
+    try { localStorage.setItem("mind-math-hide-left", "0"); } catch {}
+    if (restore === "table") { try { refreshTable(); } catch {} }
+    if (restore === "trig") { try { requestAnimationFrame(() => drawTrigCircle()); } catch {} }
+  }
+  try { localStorage.setItem(MM_HOME_KEY, "workspace"); } catch {}
+  if (opts.updateHash !== false) mmHomeSetHash(false);
+  if (opts.focusWorkspace) {
+    window.setTimeout(() => {
+      const b = document.querySelector(`.rail-item[data-view="${restore}"]`);
+      if (b) { try { b.focus({ preventScroll: true }); } catch { try { b.focus(); } catch {} } }
+    }, mmHomeReduced() ? 0 : 600);
+  }
+}
+function toggleHomePage() {
+  if (isHomeVisible()) hideHomePage({ focusWorkspace: true });
+  else showHomePage();
+}
+function animateHomePageIn() { showHomePage(); }
+function animateHomePageOut() { hideHomePage(); }
+function bindHomePageEvents() {
+  if (mmHomeBound) return;
+  mmHomeBound = true;
+  const s = $("#mmHomeStart");
+  if (s) s.addEventListener("click", () => hideHomePage({ focusWorkspace: true }));
+  const w = $("#mmHomeWorkspace");
+  if (w) w.addEventListener("click", () => hideHomePage({ focusWorkspace: true }));
+  document.addEventListener("keydown", (e) => {
+    if (!isHomeVisible()) return;
+    if (e.key !== "Enter" && e.key !== "Escape") return;
+    const t = e.target;
+    if (t && t.closest && t.closest("input,textarea,select,.mm-modal")) return;
+    if (t && t.closest && t.closest("button")) return; // để button tự xử lý
+    if (e.key === "Enter" || e.key === "Escape") { e.preventDefault(); hideHomePage({ focusWorkspace: true }); }
+  });
+  window.addEventListener("hashchange", () => {
+    try {
+      if (location.hash.includes("mm=")) { hideHomePage({ instant: true, updateHash: false }); }
+      else if (location.hash === MM_HOME_HASH) { showHomePage({ updateHash: false, noFocus: true }); }
+    } catch {}
+  });
+  window.addEventListener("resize", () => { if (isHomeVisible()) { try { mmHomeSizeCanvas(); mmHomeHeroSize(); } catch {} } });
+}
+function initHomePage() {
+  bindHomePageEvents();
+  const el = $("#mmHome");
+  if (!el) return;
+  const hash = location.hash || "";
+  let stored = null;
+  try { stored = localStorage.getItem(MM_HOME_KEY); } catch {}
+  let toHome;
+  if (hash.includes("mm=")) toHome = false;       // link chia sẻ → vào thẳng workspace
+  else if (hash === MM_HOME_HASH) toHome = true;
+  else if (stored === "workspace") toHome = false; // refresh giữ state
+  else if (stored === "home") toHome = true;
+  else toHome = true;                              // mở lần đầu → cinematic opening
+  if (toHome) showHomePage({ noFocus: true });
+  else hideHomePage({ instant: true, updateHash: false, noFocus: true });
+}
+
 /* ---------------- boot ---------------- */
 function seed() {
   const saved = store.load();
@@ -8323,6 +8918,7 @@ function spinLoop() {
 
 seed();
 bindChrome();
+initHomePage();
 syncSettingsUI();
 renderList();
 refreshTableSelect();
@@ -8334,10 +8930,13 @@ try { drawTrigCircle(); } catch {}
 requestAnimationFrame(spinLoop);
 requestAnimationFrame(trigTick);
 try {
-  const _mkModel = $("#markusModel"); if (_mkModel) _mkModel.value = markusCfg.model || "gemini-3.6-flash";
+  const _mkProv = $("#markusProvider"); if (_mkProv) _mkProv.value = markusCfg.provider || "google";
+  const _mkEp = $("#markusEndpoint"); if (_mkEp) _mkEp.value = markusCfg.endpoint || "";
+  const _mkEpRow = $("#markusEndpointRow"); if (_mkEpRow) _mkEpRow.hidden = (markusCfg.provider || "google") === "google";
+  const _mkModel = $("#markusModel"); if (_mkModel) _mkModel.value = markusCfg.model || MARKUS_DEFAULT_MODEL.google;
   const _mkKey = $("#markusKey"); if (_mkKey) _mkKey.value = markusCfg.key || "";
   renderMarkusChat(); refreshMarkusContext();
-  markusSetStatus(markusCfg.key ? "on" : "off", markusCfg.key ? "online" : "offline");
+  markusSetStatus(markusCfg.key ? "on" : "off", markusCfg.key ? "online · " + markusProviderLabel() : "offline");
 } catch {}
 
 })();
