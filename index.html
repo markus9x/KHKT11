@@ -4,50 +4,51 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Mind Math — Không gian Toán học khoa học</title>
-<meta name="description" content="Mind Math — workspace toán học khoa học cho nghiên cứu phổ thông: đại số, đồ thị, bảng, trang tính." />
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%238b5cf6'/%3E%3Cstop offset='.55' stop-color='%2338bdf8'/%3E%3Cstop offset='1' stop-color='%23e879f9'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect x='2' y='2' width='44' height='44' rx='13' fill='%23171344'/%3E%3Crect x='2' y='2' width='44' height='44' rx='13' fill='none' stroke='url(%23g)' stroke-width='2.5'/%3E%3Cpath d='M10 30c4-1 5-6 8-6s3 5 6 5 4-9 7-9 3 4 5 4' fill='none' stroke='url(%23g)' stroke-width='2.6' stroke-linecap='round'/%3E%3Ccircle cx='33' cy='15' r='2.6' fill='%23e879f9'/%3E%3C/svg%3E" />
+<meta name="description" content="Mind Math — workspace toán học khoa học cho nghiên cứu phổ thông: đại số, đồ thị, bảng giá trị." />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Crect x='2' y='2' width='44' height='44' rx='12' fill='%23170f33'/%3E%3Cg fill='none' stroke='%23dfa9f7' stroke-width='3.6' stroke-linecap='round'%3E%3Cpath d='M15 9v21c0 7-4 8.5-7 10.5'/%3E%3Cpath d='M33 9v21c0 7 4 8.5 7 10.5'/%3E%3Cpath d='M15 9l9 14 9-14'/%3E%3C/g%3E%3Ccircle cx='21' cy='29' r='2.3' fill='%23e3b0f9'/%3E%3Ccircle cx='27' cy='29' r='2.3' fill='%23e3b0f9'/%3E%3C/svg%3E" />
 <link rel="stylesheet" href="./styles.css" />
 <style>html{background:#08071a}</style>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" />
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700;800&display=swap" />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,700;0,800;1,700;1,800&display=swap" />
 </head>
 <body data-theme="light">
 <div class="app" id="app">
 
   <!-- ================= HEADER ================= -->
   <header class="topbar" role="banner">
-    <button class="icon-btn menu-btn" id="menuBtn" title="Menu" aria-label="Menu">
-      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
-    </button>
+    <div class="menu-wrap">
+      <button class="icon-btn menu-btn" id="menuBtn" title="Menu" aria-label="Menu" aria-haspopup="true" aria-expanded="false">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+      </button>
+      <div class="menu-dropdown" id="menuDropdown" hidden role="menu" aria-label="Menu chính">
+        <button role="menuitem" data-menu="home"><span class="menu-ico">⌂</span><span><b>Trang chủ</b><i>Màn hình mở đầu Mind Math</i></span></button>
+        <button role="menuitem" data-menu="workspace"><span class="menu-ico">◫</span><span><b>Không gian làm việc</b><i>Đồ thị &amp; Đại số</i></span></button>
+        <div class="menu-sep"></div>
+        <button role="menuitem" data-menu="profile"><span class="menu-ico">◉</span><span><b>Hồ sơ</b><i>Tài khoản cục bộ</i></span></button>
+        <button role="menuitem" data-menu="save"><span class="menu-ico">⇪</span><span><b>Mở / Lưu</b><i>Lưu cục bộ trình duyệt</i></span></button>
+        <button role="menuitem" data-menu="export"><span class="menu-ico">⤓</span><span><b>Xuất ảnh PNG</b><i>Chụp mặt phẳng tọa độ</i></span></button>
+      </div>
+    </div>
 
     <a class="brand" href="#" aria-label="Mind Math trang chủ">
       <span class="brand-mark" aria-hidden="true">
-        <svg viewBox="0 0 48 48" width="34" height="34">
-          <defs>
-            <linearGradient id="brandGrad" x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0" stop-color="#8b5cf6"/><stop offset=".55" stop-color="#38bdf8"/><stop offset="1" stop-color="#e879f9"/>
-            </linearGradient>
-            <radialGradient id="brandGlow" cx=".5" cy=".42" r=".75">
-              <stop offset="0" stop-color="#8b5cf6" stop-opacity=".55"/><stop offset="1" stop-color="#8b5cf6" stop-opacity="0"/>
-            </radialGradient>
-          </defs>
-          <rect x="2" y="2" width="44" height="44" rx="13" fill="#171344"/>
-          <rect x="2" y="2" width="44" height="44" rx="13" fill="url(#brandGlow)"/>
-          <rect x="2.8" y="2.8" width="42.4" height="42.4" rx="12" fill="none" stroke="url(#brandGrad)" stroke-width="2"/>
-          <!-- brain-circuit + curve motif -->
-          <path d="M10 30c4-1 5-6 8-6s3 5 6 5 4-9 7-9 3 4 5 4" fill="none" stroke="url(#brandGrad)" stroke-width="2.6" stroke-linecap="round"/>
-          <circle cx="15.5" cy="19" r="1.7" fill="#38bdf8"/>
-          <circle cx="24" cy="15.5" r="1.7" fill="#8b5cf6"/>
-          <circle cx="33" cy="15" r="2.5" fill="#e879f9"/>
-          <circle cx="33" cy="15" r="4.4" fill="none" stroke="#e879f9" stroke-opacity=".45" stroke-width="1.2"/>
-          <path d="M15.5 19 24 15.5 33 15" stroke="#a5b4fc" stroke-opacity=".6" stroke-width="1.1"/>
+        <svg viewBox="0 0 72 64" width="38" height="34">
+          <g fill="none" stroke="#dba7f6" stroke-width="5" stroke-linecap="round">
+            <path d="M20 8v30c0 12-8 14-12 17"/>
+            <path d="M52 8v30c0 12 8 14 12 17"/>
+            <path d="M20 8l16 24 16-24"/>
+            <path d="M7 39h8M7 44.5h8" stroke-width="3.5"/>
+            <path d="M57 39h8M57 44.5h8" stroke-width="3.5"/>
+          </g>
+          <circle cx="30" cy="42" r="3.2" fill="#dba7f6"/>
+          <circle cx="42" cy="42" r="3.2" fill="#dba7f6"/>
         </svg>
       </span>
       <span class="brand-text">
-        <span class="brand-name">Mind<strong>Math</strong></span>
+        <span class="brand-name">Mind<span class="brand-sig">∑</span><em>ath</em></span>
         <span class="brand-sub">Không gian Toán học khoa học</span>
       </span>
     </a>
@@ -87,11 +88,7 @@
 
     <!-- LEFT RAIL -->
     <nav class="rail" aria-label="Điều hướng chính">
-      <button class="rail-item is-active" data-view="home" aria-pressed="true" title="Trang chủ">
-        <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11.2 12 4l8 7.2"/><path d="M6.2 9.6V20h11.6V9.6"/></svg>
-        <span>Trang chủ</span>
-      </button>
-      <button class="rail-item" data-view="algebra" aria-pressed="false" title="Đại số">
+      <button class="rail-item is-active" data-view="algebra" aria-pressed="true" title="Đại số">
         <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="4" y="3" width="16" height="18" rx="2.5"/><path d="M8 7h8M8 11h3M14 11h2M8 15h2M13 15h3M8 19h8"/></svg>
         <span>Đại số</span>
       </button>
@@ -102,10 +99,6 @@
       <button class="rail-item" data-view="table" aria-pressed="false" title="Bảng giá trị">
         <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="4" y="4" width="16" height="16" rx="2.5"/><path d="M4 9.5h16M4 14.5h16M9.5 9.5V20M14.5 9.5V20"/></svg>
         <span>Bảng</span>
-      </button>
-      <button class="rail-item" data-view="sheet" aria-pressed="false" title="Trang tính">
-        <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="4" y="3" width="16" height="18" rx="2.5"/><path d="M8 3v18M4 8h4M4 13h4M4 18h4M12 8h8M12 13h8M12 18h8"/></svg>
-        <span>Trang tính</span>
       </button>
       <button class="rail-item" data-view="trig" aria-pressed="false" title="Đường tròn lượng giác">
         <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="1.3" fill="currentColor" stroke="none"/><path d="M12 12 18.5 7.5"/><path d="M12 4v1.6M4 12h1.6M20 12h-1.6M12 20v-1.6"/><path d="M14.5 5.2a4.5 4.5 0 0 1 3.3 3.3"/></svg>
@@ -263,6 +256,7 @@
             <button class="tool-card" data-tool="vector" title="Véc-tơ qua 2 điểm"><span class="tic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.5 17.5 17 7M13.3 7H18v4.7"/><circle cx="5" cy="19" r="2" fill="url(#mmTicGrad)" stroke="none"/></svg></span><b>Véc-tơ</b></button>
             <button class="tool-card" data-tool="fixedseg" title="Đoạn cố định — nhấp điểm gốc rồi nhập độ dài + góc"><span class="tic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 18h15"/><path d="M8 18v-3.2M12 18v-3.2M16 18v-3.2"/><circle cx="4.5" cy="18" r="2" fill="url(#mmTicGrad)" stroke="none"/><circle cx="19.5" cy="18" r="2" fill="url(#mmTicGrad)" stroke="none"/></svg></span><b>Dài cố định</b></button>
             <button class="tool-card" data-tool="vecfrom" title="Véc-tơ từ điểm — nhấp 2 điểm hướng rồi điểm đặt"><span class="tic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 16.5 11.5 8M8 8h3.5v3.5"/><circle cx="18" cy="17.5" r="2.6" stroke-dasharray="2 1.6"/><circle cx="18" cy="17.5" r="1" fill="currentColor" stroke="none"/></svg></span><b>Véc-tơ điểm</b></button>
+            <button class="tool-card" data-tool="polyline" title="Đường gấp khúc — nhấp các điểm, Enter / nhấp đúp để xong"><span class="tic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 18l5-10 5 6 6-8"/><circle cx="4" cy="18" r="1.7" fill="url(#mmTicGrad)" stroke="none"/><circle cx="20" cy="6" r="1.7" fill="url(#mmTicGrad)" stroke="none"/></svg></span><b>Gấp khúc</b></button>
           </div>
           <div class="tool-group-label">Dựng hình · Construct</div>
           <div class="tool-subgrid">
@@ -273,10 +267,12 @@
             <button class="tool-card" data-tool="bisector" title="Phân giác — nhấp 3 điểm (đỉnh ở giữa)"><span class="tic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 19h14M5 19l12-11"/><path d="M5 19l10.5-3.5" stroke-dasharray="2.5 2"/><circle cx="5" cy="19" r="2" fill="url(#mmTicGrad)" stroke="none"/></svg></span><b>Phân giác</b></button>
             <button class="tool-card" data-tool="tangent" title="Tiếp tuyến — chọn đường rồi nhấp điểm chạm"><span class="tic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="10" cy="13" r="6"/><path d="M16 3v18"/><circle cx="16" cy="13" r="2" fill="url(#mmTicGrad)" stroke="none"/></svg></span><b>Tiếp tuyến</b></button>
             <button class="tool-card" data-tool="locus" title="Quỹ tích (lấy mẫu) — chọn điểm phụ thuộc rồi dựng"><span class="tic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 18c4-8 5-2 8-8s4-4 8-2" stroke-dasharray="0.5 3.2"/><circle cx="20" cy="8" r="2" fill="url(#mmTicGrad)" stroke="none"/></svg></span><b>Quỹ tích</b></button>
+            <button class="tool-card" data-tool="polar" title="Cực / đường kính — chọn đường tròn ở Đại số rồi nhấp 1 cực điểm"><span class="tic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="13" r="6"/><circle cx="19" cy="5.5" r="1.9" fill="url(#mmTicGrad)" stroke="none"/><path d="M4.5 17.5 13 7.5"/></svg></span><b>Cực/ĐKính</b></button>
           </div>
           <div class="tool-group-label">Đường tròn · Circles</div>
           <div class="tool-subgrid">
             <button class="tool-card" data-tool="circle" title="Đường tròn — tâm + điểm vành"><span class="tic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="7.5"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><path d="M12 12l5.3-5.3"/><circle cx="17.3" cy="6.7" r="2" fill="url(#mmTicGrad)" stroke="none"/></svg></span><b>Đường tròn</b></button>
+            <button class="tool-card" data-tool="circleCR" title="Tròn tâm + bán kính — nhấp tâm rồi nhập số R"><span class="tic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="7.5" stroke-dasharray="3 2.2"/><circle cx="12" cy="12" r="2" fill="url(#mmTicGrad)" stroke="none"/><path d="M12 12h6.5"/><path d="M15 10.5 18.5 12 15 13.5"/></svg></span><b>Tròn tâm+R</b></button>
             <button class="tool-card" data-tool="compass" title="Compa — tâm + 2 điểm định bán kính"><span class="tic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="4" r="1.8" fill="currentColor" stroke="none"/><path d="M12 5.8 7 20M12 5.8 17 20"/><circle cx="17" cy="20" r="1.4" fill="currentColor" stroke="none"/><path d="M4.5 16.5a8 8 0 0 0 5.5 3.4" opacity=".7"/></svg></span><b>Compa</b></button>
             <button class="tool-card" data-tool="semicircle" title="Bán nguyệt — 2 điểm đầu đường kính"><span class="tic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 15a8 8 0 0 1 16 0"/><path d="M4 15h16"/><circle cx="4" cy="15" r="1.8" fill="url(#mmTicGrad)" stroke="none"/><circle cx="20" cy="15" r="1.8" fill="url(#mmTicGrad)" stroke="none"/></svg></span><b>Bán nguyệt</b></button>
             <button class="tool-card" data-tool="circle3" title="Tròn qua 3 điểm — nhấp 3 điểm không thẳng hàng"><span class="tic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="13" r="7"/><circle cx="12" cy="6" r="1.7" fill="url(#mmTicGrad)" stroke="none"/><circle cx="18" cy="16" r="1.7" fill="url(#mmTicGrad)" stroke="none"/><circle cx="6" cy="16" r="1.7" fill="url(#mmTicGrad)" stroke="none"/></svg></span><b>Tròn 3đ</b></button>
@@ -335,7 +331,7 @@
           <div class="tool-group-label">Cơ bản · Basic 3D</div>
           <div class="tool-subgrid">
             <button class="tool-card" data-tool="m3d-move" title="Di chuyển 3D — kéo để xoay orbit, Shift+kéo để pan"><span class="tic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9a8 5 0 0 1 16 0"/><path d="M20 15a8 5 0 0 1-16 0"/><path d="M17.3 5.6 20 9l-3.6.7M6.7 18.4 4 15l3.6-.7"/></svg></span><b>Di chuyển</b></button>
-            <button class="tool-card" data-tool="m3d-point" title="Điểm 3D — nhấp lên nền để tạo điểm (Alt+kéo để nâng Z)"><span class="tic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="19" rx="6" ry="2"/><path d="M12 6.5v10" stroke-dasharray="2.5 2"/><circle cx="12" cy="5" r="2.4" fill="url(#mmTicGrad)" stroke="none"/></svg></span><b>Điểm 3D</b></button>
+            <button class="tool-card" data-tool="m3d-point" title="Điểm 3D — nhấp lên nền để tạo điểm (Shift+nhấp để giữ độ cao Z)"><span class="tic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="19" rx="6" ry="2"/><path d="M12 6.5v10" stroke-dasharray="2.5 2"/><circle cx="12" cy="5" r="2.4" fill="url(#mmTicGrad)" stroke="none"/></svg></span><b>Điểm 3D</b></button>
             <button class="tool-card" data-tool="m3d-pointon" title="Điểm trên đối tượng — nhấp lên đoạn/đường/mặt/cầu"><span class="tic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 19 19 6"/><circle cx="13" cy="11.6" r="2.3" fill="url(#mmTicGrad)" stroke="none"/><ellipse cx="12" cy="20" rx="7" ry="1.8" opacity=".5"/></svg></span><b>Thuộc 3D</b></button>
             <button class="tool-card" data-tool="m3d-midpoint" title="Trung điểm 3D — nhấp 2 điểm"><span class="tic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 17 16 7M7 20l12-10" opacity=".45"/><circle cx="4" cy="17" r="1.7" fill="url(#mmTicGrad)" stroke="none"/><circle cx="16" cy="7" r="1.7" fill="url(#mmTicGrad)" stroke="none"/><circle cx="10" cy="12" r="2.4" fill="url(#mmTicGrad)" stroke="none"/></svg></span><b>Trung điểm</b></button>
           </div>
@@ -416,7 +412,7 @@
             </div>
             <label class="m3d-net-slider">Tiến trình <input type="range" id="m3dNetSlider" min="0" max="100" value="0" /></label>
           </div>
-          <div class="tip-box">Mẹo 3D: nhấp <b>gần điểm tím</b> để bắt điểm (snap) · <b>Alt+kéo điểm</b> để nâng/hạ Z · Enter chốt đa giác.</div>
+          <div class="tip-box">Mẹo 3D: nhấp <b>gần điểm tím</b> để bắt điểm (snap) · <b>Shift/Alt+kéo điểm</b> để nâng/hạ Z · <b>Shift+nhấp nền</b> tạo điểm giữ độ cao · Enter chốt đa giác.</div>
         </div>
         </div>
         <div class="tip-box">Mẹo: lăn chuột thu/phóng, kéo nền di chuyển. Đa giác / Hồi quy / Danh sách: <b>Enter</b> hoặc <b>nhấp đúp</b> để xong; đa giác khép lại tại điểm đầu. <b>ESC</b> hủy thao tác đang dựng.</div>
@@ -431,17 +427,6 @@
         <div class="table-wrap"><table class="value-table" id="valueTable">
           <thead><tr><th>x</th><th>f(x)</th></tr></thead><tbody></tbody>
         </table></div>
-      </section>
-
-      <!-- VIEW: SHEET -->
-      <section class="side-view" data-pane="sheet">
-        <div class="side-head"><h2>Trang tính</h2></div>
-        <p class="side-desc">Bảng tính mini — nhập số hoặc công thức bắt đầu bằng <b>=</b>.</p>
-        <div class="table-wrap"><table class="sheet" id="sheetTable">
-          <thead><tr><th></th><th>A</th><th>B</th><th>C</th></tr></thead>
-          <tbody></tbody>
-        </table></div>
-        <div class="tip-box">Ví dụ: <code>=A1*2+sin(A2)</code> — hỗ trợ sin, cos, sqrt, pi.</div>
       </section>
 
       <!-- VIEW: TRIG — Đường tròn lượng giác -->
@@ -501,11 +486,18 @@
             <h2>Markus <em class="ai-badge big">AI</em></h2>
             <span class="markus-sub">Trợ lý toán học</span>
           </div>
-          <span class="markus-status" id="markusStatus"><i></i>online</span>
           <button class="mini-btn markus-gear" id="markusSettingsBtn" title="Cài đặt Markus">⚙</button>
         </div>
         <div class="markus-context" id="markusContext" title="Bối cảnh đồ thị Markus đang thấy"></div>
         <div class="markus-settings" id="markusSettings" hidden>
+          <div class="markus-conn" id="markusConn" title="Trạng thái kết nối AI">
+            <span class="mk-conn-dot off" id="markusConnDot"></span>
+            <div class="mk-conn-info">
+              <b id="markusConnState">Offline</b>
+              <span id="markusConnSub">Chưa có API key — vẫn dùng tốt</span>
+            </div>
+            <button class="mini-btn" id="markusConnTest" title="Kiểm tra kết nối nhanh">Kiểm tra</button>
+          </div>
           <label class="field-label" for="markusProvider">Máy chủ AI (dán key hãng nào cũng chạy)</label>
           <select id="markusProvider" class="select">
             <option value="google">Google Gemini</option>
@@ -515,6 +507,13 @@
             <option value="openrouter">OpenRouter</option>
             <option value="custom">Tùy chỉnh (chuẩn OpenAI)</option>
           </select>
+          <div class="markus-prov-chips" id="markusProvChips" role="group" aria-label="Đổi nhanh máy chủ">
+            <button data-prov="google" title="Google Gemini">Gemini</button>
+            <button data-prov="openai" title="OpenAI">OpenAI</button>
+            <button data-prov="xai" title="Grok (xAI)">Grok</button>
+            <button data-prov="deepseek" title="DeepSeek">DeepSeek</button>
+            <button data-prov="openrouter" title="OpenRouter">OR</button>
+          </div>
           <div id="markusEndpointRow" hidden>
             <label class="field-label" for="markusEndpoint">Endpoint (dạng https://…/v1)</label>
             <input id="markusEndpoint" class="select" placeholder="https://api.openai.com/v1" autocomplete="off" spellcheck="false" />
@@ -607,7 +606,7 @@
           <button data-v3="iso" title="Góc isometric">⬔ Iso</button>
           <button data-v3="focus" title="Hướng camera về vật đang chọn">◎ Focus</button>
           <button data-v3="full" title="Toàn màn hình 3D">⛶ Full</button>
-          <span class="v3-hint">Kéo để xoay · Lăn chuột để zoom · Shift+kéo để di chuyển · Alt+kéo điểm = nâng Z</span>
+          <span class="v3-hint">Kéo để xoay (thả ra vẫn trớn) · Lăn chuột / 2 ngón để zoom · Shift+kéo để di chuyển · Shift/Alt+kéo điểm = nâng Z</span>
         </div>
 
         <div class="graph-toolbar" role="toolbar" aria-label="Công cụ khung nhìn">
@@ -622,28 +621,6 @@
         </div>
 
         <div class="toast-stack" id="toastStack" aria-live="polite"></div>
-      </div>
-
-      <!-- FEATURE CARDS (giữ lại — ô lệnh đã dời lên panel Đại số kiểu GeoGebra) -->
-      <div class="feature-row">
-        <button class="feature-card fc-geo" data-demo="geometry" title="Demo 1 chạm: điểm O, đường tròn R=3 và đường thẳng x+y=2">
-          <span class="f-icon g1" aria-hidden="true"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="13" r="6.5"/><circle cx="11" cy="13" r="1.4" fill="currentColor" stroke="none"/><path d="M11 13l4.7-4.7"/><circle cx="15.7" cy="8.3" r="1.4" fill="currentColor" stroke="none"/></svg></span>
-          <span class="f-text"><b>Tạo hình học</b><i>Dựng điểm, đường, tròn trên mặt phẳng</i></span>
-          <code class="f-code">x²+y²=9</code>
-          <span class="f-go">→</span>
-        </button>
-        <button class="feature-card fc-ana" data-demo="analyze" title="Demo 1 chạm: vẽ x³−3x, đánh dấu cực trị vàng + nghiệm xanh">
-          <span class="f-icon g2" aria-hidden="true"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 18c4-1 5-8 8-8s3 6 6 6 3-7 4-7"/><circle cx="9" cy="10" r="1.5" fill="currentColor" stroke="none"/><circle cx="17" cy="16" r="1.5" fill="currentColor" stroke="none"/></svg></span>
-          <span class="f-text"><b>Phân tích hàm số</b><i>Cực trị, nghiệm, bảng biến thiên nhanh</i></span>
-          <code class="f-code">x³−3x</code>
-          <span class="f-go">→</span>
-        </button>
-        <button class="feature-card fc-solv" data-demo="solve" title="Demo 1 chạm: vẽ x²−3 và dò nghiệm trực quan">
-          <span class="f-icon g3" aria-hidden="true"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="12" r="6"/><path d="M10 3.5v2.5M10 18v2.5M1.5 12H4M14 12h1.5"/><path d="M15.5 15.5l2 2 3.5-4"/></svg></span>
-          <span class="f-text"><b>Giải phương trình</b><i>Nhập f(x)=0 để dò nghiệm trực quan</i></span>
-          <code class="f-code">x²−3=0</code>
-          <span class="f-go">→</span>
-        </button>
       </div>
     </main>
 
@@ -672,7 +649,7 @@
         <ul class="feat-list">
           <li><span class="tick">✓</span> Vẽ mượt nhiều đồ thị đồng thời</li>
           <li><span class="tick">✓</span> Điểm, giao điểm &amp; nghiệm trực quan</li>
-          <li><span class="tick">✓</span> Bảng giá trị + trang tính mini</li>
+          <li><span class="tick">✓</span> Bảng giá trị trực quan</li>
           <li><span class="tick">✓</span> Khung nhìn chuẩn cho thuyết trình</li>
         </ul>
       </section>
@@ -708,14 +685,19 @@
     <header class="mm-home__top">
       <div class="mm-home__brandmini">
         <span class="mm-home__mark" aria-hidden="true">
-          <svg viewBox="0 0 48 48" width="30" height="30">
-            <rect x="2" y="2" width="44" height="44" rx="13" fill="#171344"/>
-            <rect x="2.8" y="2.8" width="42.4" height="42.4" rx="12" fill="none" stroke="#8b5cf6" stroke-width="2"/>
-            <path d="M10 30c4-1 5-6 8-6s3 5 6 5 4-9 7-9 3 4 5 4" fill="none" stroke="#a78bfa" stroke-width="2.6" stroke-linecap="round"/>
-            <circle cx="33" cy="15" r="2.5" fill="#e879f9"/>
+          <svg viewBox="0 0 72 64" width="34" height="30">
+            <g fill="none" stroke="#dba7f6" stroke-width="5" stroke-linecap="round">
+              <path d="M20 8v30c0 12-8 14-12 17"/>
+              <path d="M52 8v30c0 12 8 14 12 17"/>
+              <path d="M20 8l16 24 16-24"/>
+              <path d="M7 39h8M7 44.5h8" stroke-width="3.5"/>
+              <path d="M57 39h8M57 44.5h8" stroke-width="3.5"/>
+            </g>
+            <circle cx="30" cy="42" r="3.2" fill="#dba7f6"/>
+            <circle cx="42" cy="42" r="3.2" fill="#dba7f6"/>
           </svg>
         </span>
-        <span class="mm-home__brandname">Mind<strong>Math</strong></span>
+        <span class="mm-home__brandname">Mind<span class="brand-sig">∑</span><em>ath</em></span>
       </div>
       <div class="mm-home__topmeta">
         <span class="mm-home__pill">Nguyễn Chấn Hưng/Trần Lương Như Ý</span>
@@ -744,7 +726,7 @@
       </div>
     </main>
     <footer class="mm-home__foot">
-      <span>Đại số · Đồ thị · Bảng · Trang tính</span>
+      <span>Đại số · Đồ thị · Bảng giá trị</span>
       <i aria-hidden="true">·</i>
       <span>Lưu cục bộ · Chia sẻ qua liên kết</span>
     </footer>

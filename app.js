@@ -3,7 +3,7 @@
    - Canvas coordinate-plane renderer (pan / zoom / trace)
    - Expression parser: functions f(x), points, vertical lines, implicit f(x,y)=0
    - Tools: move / point / line / circle (cụm Phân tích đã gỡ khỏi web)
-   - Panels: algebra list, value table, mini sheet, settings
+   - Panels: algebra list, value table, settings
    No external dependencies. Vietnamese UI.
    ============================================================================ */
 (function () {
@@ -189,6 +189,12 @@ function parseCommand(raw) {
       const re = /\(\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*\)/g;
       let m; while ((m = re.exec(garg)) !== null) pts.push([parseFloat(m[1]), parseFloat(m[2])]);
       if (pts.length >= 3) return { kind: "polygon", pts, label: original };
+    }
+    if (["polyline", "duonggapkhuc", "gapkhuc"].includes(gname)) {
+      const pts = [];
+      const re = /\(\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*\)/g;
+      let m; while ((m = re.exec(garg)) !== null) pts.push([parseFloat(m[1]), parseFloat(m[2])]);
+      if (pts.length >= 2) return { kind: "polyline", pts, label: original };
     }
     if (["text", "chu", "chuthich"].includes(gname)) {
       const tm = garg.match(/^\(\s*"([^"]{0,80})"\s*,\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*\)$/);
@@ -402,6 +408,7 @@ const state = {
   pending: [],       // pending clicks for line/circle
   toolMem: {},       // bộ nhớ tạm riêng từng công cụ (chép kiểu, ảnh…)
   lastClick: null,   // {x,y} math
+  lastZ3d: 0,         // độ cao Oz nhớ lần trước để Shift+click tạo điểm 3D giữ độ cao
   params: {},        // tham số thanh trượt GeoGebra: {a: 1, b: 0.5…}
   opts: { minor: true, labels: true, glow: true, gridStep: 1, thick: 2.5,
           theme: "light", mesh3d: true, spin3d: false, quality3d: 32,
@@ -441,7 +448,7 @@ function rehydrate(o) {
 }
 function pushHistory() { snapshot(); persist(); }
 function persist() {
-  store.save({ objects: state.objects.map(stripFn), seq: state.seq, colorIdx, params: state.params, view: state.view, view3d: state.view3d, mode: state.mode, opts: state.opts });
+  store.save({ objects: state.objects.map(stripFn), seq: state.seq, colorIdx, params: state.params, view: state.view, view3d: state.view3d, mode: state.mode, opts: state.opts, lastZ3d: state.lastZ3d });
 }
 
 /* ---------------- canvas renderer ---------------- */
@@ -582,6 +589,22 @@ function hitTest2D(px, py) {
           const [mx, my] = toMath(px, py);
           if (mmPointInPoly(mx, my, o.pts)) cands.push({ obj: o, part: "body", vertex: -1, d: 8, rank: 3 });
         } catch {}
+      } else if (o.kind === "polyline") {
+        if (!o.pts || o.pts.length < 2) continue;
+        const S = o.pts.map(p => toScreen(p[0], p[1]));
+        let bestV = -1, bestVd = 1e9;
+        S.forEach(([sx, sy], i) => {
+          if (!isFinite(sx) || !isFinite(sy)) return;
+          const d = Math.hypot(px - sx, py - sy);
+          if (d < bestVd) { bestVd = d; bestV = i; }
+        });
+        if (bestVd <= HIT.vertex) { cands.push({ obj: o, part: "vertex", vertex: bestV, d: bestVd, rank: 1 }); continue; }
+        let m = Infinity;
+        for (let i = 0; i < S.length - 1; i++) {
+          const A = S[i], B = S[i + 1];
+          m = Math.min(m, distPtSeg(px, py, A[0], A[1], B[0], B[1]));
+        }
+        if (m <= HIT.edge) { cands.push({ obj: o, part: "edge", vertex: -1, d: m, rank: 3 }); continue; }
       } else if (o.kind === "angle") {
         const A = toScreen(o.ax, o.ay), B = toScreen(o.bx, o.by), C = toScreen(o.cx, o.cy);
         const da = Math.hypot(px - A[0], py - A[1]), db = Math.hypot(px - B[0], py - B[1]), dc = Math.hypot(px - C[0], py - C[1]);
@@ -673,8 +696,8 @@ function hitTest2D(px, py) {
   return cands[0];
 }
 function hitTest3D(px, py) {
-  // chỉ point3d / point (trên nền) mới bắt được trong 3D; ưu tiên gần màn hình nhất
-  let best = null, bd = 16;
+  // point3d / point (trên nền) trong 3D; ưu tiên gần màn hình nhất (bán kính 18px cho dễ bắt)
+  let best = null, bd = 18;
   for (const o of state.objects) {
     if (!o.visible || o.error) continue;
     if (o.kind !== "point3d" && o.kind !== "point") continue;
@@ -687,22 +710,43 @@ function hitTest3D(px, py) {
   }
   return best ? { obj: best, d: bd } : null;
 }
-/* Nghịch đảo màn hình -> mặt phẳng z=const (cho drag point 3D, giữ z). */
-function screenToPlaneZ(px, py, zConst) {
+/* Nghịch đảo màn hình -> mặt phẳng z=const (Newton với Jacobian số — chính xác mọi góc).
+   WHAT: giải proj3(x,y,zConst)=(px,py). WHY: bản gần đúng cũ bỏ phối cảnh + sai Jacobian
+   nên kéo điểm bị giật/nhảy, nhất là khi xoay nghiêng hoặc nhìn từ trên.
+   INPUT: px,py là CSS pixel. OUTPUT: {x,y} world (chưa làm tròn). */
+function mmUnprojectToPlane(px, py, zConst) {
   const v = state.view3d;
-  let x = (px - W / 2) / (v.scale || 36) + (v.tx || 0);
-  let y = (H / 2 - py) / (v.scale || 36) + (v.ty || 0);
-  for (let k = 0; k < 8; k++) {
+  const sc = (isFinite(v.scale) && v.scale > 0) ? v.scale : 36;
+  let x = (px - W / 2) / sc + (v.tx || 0), y = (H / 2 - py) / sc + (v.ty || 0);
+  if (!isFinite(x) || !isFinite(y)) return { x: 0, y: 0 };
+  const h = 1e-3;
+  for (let k = 0; k < 12; k++) {
     let p;
     try { p = proj3(x, y, zConst); } catch { break; }
-    const dx = (px - p.sx) / (v.scale || 36), dy = -(py - p.sy) / (v.scale || 36);
-    const ce = Math.cos(v.el || 0.9);
-    if (Math.abs(ce) < 0.12) break;
-    x += dx * Math.cos(-v.az) * 0.7;
-    y += (dx * Math.sin(-v.az) + dy * 0.7) * 0.7;
-    if (Math.abs(dx) + Math.abs(dy) < 0.005) break;
+    const ex = px - p.sx, ey = py - p.sy;
+    if (Math.hypot(ex, ey) < 0.1) break;
+    let a, b, c, d;
+    try {
+      a = proj3(x + h, y, zConst); b = proj3(x - h, y, zConst);
+      c = proj3(x, y + h, zConst); d = proj3(x, y - h, zConst);
+    } catch { break; }
+    const j11 = (a.sx - b.sx) / (2 * h), j21 = (a.sy - b.sy) / (2 * h);
+    const j12 = (c.sx - d.sx) / (2 * h), j22 = (c.sy - d.sy) / (2 * h);
+    const det = j11 * j22 - j12 * j21;
+    if (!isFinite(det) || Math.abs(det) < 1e-9) break;
+    let dx = (ex * j22 - ey * j12) / det, dy = (j11 * ey - j21 * ex) / det;
+    if (!isFinite(dx) || !isFinite(dy)) break;
+    const l = Math.hypot(dx, dy);
+    if (l > 2) { dx *= 2 / l; dy *= 2 / l; } // chống bắn xa khi đoán ban đầu lệch
+    x += dx; y += dy;
+    if (!isFinite(x) || !isFinite(y)) break;
   }
-  return { x: mmRound2(x), y: mmRound2(y) };
+  return { x, y };
+}
+/* Nghịch đảo màn hình -> mặt phẳng z=const (cho drag point 3D, giữ z). */
+function screenToPlaneZ(px, py, zConst) {
+  const q = mmUnprojectToPlane(px, py, zConst);
+  return { x: mmRound2(q.x), y: mmRound2(q.y) };
 }
 /* số gọn cho HUD / nhãn vô hạn: 1e12 → "1e12", 0.0000001 → "1e-7" */
 function fmtCompact(v, sig) {
@@ -907,6 +951,7 @@ function draw() {
     else if (o.kind === "ray") drawRay(o);
     else if (o.kind === "vector") drawVector(o);
     else if (o.kind === "polygon") drawPolygon(o);
+    else if (o.kind === "polyline") drawPolyline(o);
     else if (o.kind === "angle") drawAngle(o);
     else if (o.kind === "text") drawTextObj(o);
     else if (o.kind === "arc") drawArc(o);
@@ -919,7 +964,7 @@ function draw() {
   if (state.pending.length) {
     ctx.fillStyle = "#38bdf8";
     for (const p of state.pending) { const [sx, sy] = toScreen(p.x, p.y); ctx.beginPath(); ctx.arc(sx, sy, 4, 0, 7); ctx.fill(); }
-    if (state.pending.length > 1 && ["polygon", "oriented", "plist", "regression", "conic5", "segment", "ray", "vector", "line", "vecfrom"].includes(state.tool)) {
+    if (state.pending.length > 1 && ["polygon", "oriented", "polyline", "plist", "regression", "conic5", "segment", "ray", "vector", "line", "vecfrom"].includes(state.tool)) {
       ctx.save(); ctx.strokeStyle = "#38bdf8"; ctx.lineWidth = 1.6; ctx.setLineDash([6, 4]);
       ctx.beginPath();
       state.pending.forEach((p, i) => { const [sx, sy] = toScreen(p.x, p.y); if (i === 0) ctx.moveTo(sx, sy); else ctx.lineTo(sx, sy); });
@@ -945,6 +990,13 @@ function drawPoly3DFlat(o) {
   ctx.globalAlpha = 0.8; ctx.beginPath();
   o.pts.forEach((p, i) => { const q = proj3(p[0], p[1], 0); if (i === 0) ctx.moveTo(q.sx, q.sy); else ctx.lineTo(q.sx, q.sy); });
   ctx.closePath(); ctx.stroke(); ctx.restore();
+}
+function drawPolyline3DFlat(o) {
+  if (!o.pts || o.pts.length < 2) return;
+  ctx.save(); ctx.strokeStyle = o.color; ctx.lineWidth = 1.6;
+  ctx.globalAlpha = 0.8; ctx.beginPath();
+  o.pts.forEach((p, i) => { const q = proj3(p[0], p[1], 0); if (i === 0) ctx.moveTo(q.sx, q.sy); else ctx.lineTo(q.sx, q.sy); });
+  ctx.stroke(); ctx.restore();
 }
 function tickDecimals(step) {
   if (!isFinite(step) || step <= 0) return 0;
@@ -1203,25 +1255,9 @@ function axisExtent3D() {
 }
 // Nghịch đảo: màn hình -> điểm trên mặt z=0 (để tạo điểm 3D bằng click)
 function screenToFloor(px, py) {
-  const v = state.view3d;
-  // giải tuyến tính: tìm (x,y) sao cho proj3(x,y,0) = (px,py) (xấp xỉ trực giao)
-  // lặp 3 vòng Newton đơn giản
-  let x = (px - W / 2) / v.scale + v.tx, y = (H / 2 - py) / v.scale + v.ty;
-  for (let k = 0; k < 6; k++) {
-    const p = proj3(x, y, 0);
-    const dx = (px - p.sx) / v.scale, dy = -(py - p.sy) / v.scale;
-    // Jacobian xấp xỉ bằng xoay ngược
-    const ca = Math.cos(-v.az), sa = Math.sin(-v.az);
-    // chuyển (dx, dy) trong không gian xoay về (x,y): dy thuộc Z sau nghiêng
-    const ce = Math.cos(v.el);
-    if (Math.abs(ce) < 0.15) break;
-    const dY = dy / Math.sin(v.el || 0.001) * 0.5 + dx * 0;
-    // bước đơn giản, hội tụ đủ cho click
-    x += dx * ca * 0.7;
-    y += (dx * sa + dY) * 0.7;
-    if (Math.abs(dx) + Math.abs(dY) < 0.01) break;
-  }
-  return { x: round2(x), y: round2(y) };
+  // tìm (x,y) sao cho proj3(x,y,0) = (px,py) — Newton chính xác ở mọi góc nhìn
+  const q = mmUnprojectToPlane(px, py, 0);
+  return { x: round2(q.x), y: round2(q.y) };
 }
 
 function draw3D() {
@@ -1356,6 +1392,7 @@ function draw3D() {
       else if (ob.kind === "vline") drawVLine3D(ob);
       else if (ob.kind === "segment" || ob.kind === "vector" || ob.kind === "ray") drawSeg3DFlat(ob);
       else if (ob.kind === "polygon") drawPoly3DFlat(ob);
+      else if (ob.kind === "polyline") drawPolyline3DFlat(ob);
       else if (ob.kind === "text") drawPoint3D(ob.x, ob.y, 0, { ...ob, name: `"${ob.text}"` });
       /* MIND MATH 3D Construction Engine — đối tượng quan hệ */
       else if (ob.kind === "segment3d" && typeof mmDrawSeg3D === "function") mmDrawSeg3D(ob);
@@ -1382,7 +1419,9 @@ function draw3D() {
 function drawSurface3D(o) {
   const ap = animP(o);
   if (ap <= 0) return;
-  const N = clamp(Math.round(state.opts.quality3d || 32), 12, 64);
+  let N = clamp(Math.round(state.opts.quality3d || 32), 12, 64);
+  // đang xoay/pinch/quán tính -> hạ lưới một nửa để giữ 60fps, thả ra vẽ nét lại
+  try { if (typeof mmIsOrbiting === "function" && mmIsOrbiting()) N = Math.max(12, N >> 1); } catch {}
   const R = 5;
   const xs = [], zs = [];
   const F = [];
@@ -1491,7 +1530,9 @@ function drawImplicit3D(o) {
   // đường mức f(x,y)=0 nằm trên nền z=0 (marching squares rồi chiếu 3D)
   const ap = animP(o);
   if (ap <= 0) return;
-  const R = 6, N = 90;
+  const R = 6;
+  let N = 90;
+  try { if (typeof mmIsOrbiting === "function" && mmIsOrbiting()) N = 48; } catch {}
   const F = [];
   for (let j = 0; j <= N; j++) {
     const row = []; const y = -R + (2 * R * j) / N;
@@ -1816,6 +1857,24 @@ function drawPolygon(o) {
   for (const [sx, sy] of S) geomDot(sx, sy, o.color, 4);
   if (!o.hideName) geomLabel(o.name, S[0][0], S[0][1], o.color);
 }
+/* Đường gấp khúc (mở): như đa giác nhưng không khép/không tô. */
+function drawPolyline(o) {
+  if (!o.pts || o.pts.length < 2) return;
+  const S = o.pts.map(p => toScreen(p[0], p[1]));
+  if (S.some(s => !isFinite(s[0]) || !isFinite(s[1]))) return;
+  let minX = 1e18, maxX = -1e18, minY = 1e18, maxY = -1e18;
+  for (const [sx, sy] of S) { if (sx < minX) minX = sx; if (sx > maxX) maxX = sx; if (sy < minY) minY = sy; if (sy > maxY) maxY = sy; }
+  const M = 200;
+  if (maxX < -M || minX > W + M || maxY < -M || minY > H + M) return;
+  if ((maxX - minX) < 2 && (maxY - minY) < 2) { geomDot((minX + maxX) / 2, (minY + maxY) / 2, o.color, 3.5); return; }
+  geomStyle(o);
+  ctx.beginPath();
+  S.forEach(([sx, sy], i) => { if (i === 0) ctx.moveTo(sx, sy); else ctx.lineTo(sx, sy); });
+  ctx.stroke();
+  ctx.restore();
+  for (const [sx, sy] of S) geomDot(sx, sy, o.color, 4);
+  if (!o.hideName) geomLabel(o.name, S[0][0], S[0][1], o.color);
+}
 function angleDegOf(o) {
   const v1x = o.ax - o.bx, v1y = o.ay - o.by, v2x = o.cx - o.bx, v2y = o.cy - o.by;
   const a1 = Math.atan2(v1y, v1x), a2 = Math.atan2(v2y, v2x);
@@ -1990,6 +2049,7 @@ function addObject(expr, opts = {}) {
   else if (parsed.kind === "ray") name = `T${state.seq}`;
   else if (parsed.kind === "vector") name = `v${state.seq}`;
   else if (parsed.kind === "polygon") name = `G${state.seq}`;
+  else if (parsed.kind === "polyline") name = `Pl${state.seq}`;
   else if (parsed.kind === "angle") name = `α${state.seq}`;
   else if (parsed.kind === "text") name = `Tx${state.seq}`;
   else if (parsed.kind === "arc") name = `Arc${state.seq}`;
@@ -2220,10 +2280,15 @@ function findExtrema(fn, a, b) {
   // dedupe neighbours
   return out.filter((p, i, arr) => i === 0 || Math.abs(p.x - arr[i - 1].x) > (b - a) / 200).slice(0, 12);
 }
-function markPoint(x, y, color) {
-  pushHistory(); state.seq += 1;
+function markPointSilent(x, y, color) {
+  state.seq += 1;
   const _o = { id: "o" + Date.now().toString(36) + state.seq + Math.floor(Math.random() * 99), name: `M${state.seq}(${round2(x)}, ${round2(y)})`, expr: `(${round2(x)}, ${round2(y)})`, kind: "point", x, y, color: color || "#38bdf8", visible: true, error: null, born: state.opts.animate ? performance.now() : 0 };
   state.objects.push(_o);
+  return _o;
+}
+function markPoint(x, y, color) {
+  pushHistory();
+  const _o = markPointSilent(x, y, color);
   renderList($("#algebraSearch").value); draw(); kickAnim(); persist();
   return _o;
 }
@@ -2354,6 +2419,10 @@ function mmDrawInteractOverlay2D() {
         ctx.beginPath();
         o.pts.forEach((p, i) => { const [sx, sy] = toScreen(p[0], p[1]); if (i === 0) ctx.moveTo(sx, sy); else ctx.lineTo(sx, sy); });
         ctx.closePath(); ctx.stroke();
+      } else if (o.kind === "polyline" && o.pts) {
+        ctx.beginPath();
+        o.pts.forEach((p, i) => { const [sx, sy] = toScreen(p[0], p[1]); if (i === 0) ctx.moveTo(sx, sy); else ctx.lineTo(sx, sy); });
+        ctx.stroke();
       } else if (o.kind === "angle") {
         const [bx, by] = toScreen(o.bx, o.by);
         ctx.beginPath(); ctx.arc(bx, by, 36, 0, 7); ctx.stroke();
@@ -2404,7 +2473,7 @@ function mmDrawInteractOverlay2D() {
         if (o.kind === "point") { wx = o.x; wy = o.y; label = `${mmShortName(o).replace(/\(.*$/, "")} (${mmFmtNum(o.x)}, ${mmFmtNum(o.y)})`; }
         else if (o.kind === "point3d") { wx = o.x; wy = o.y; label = `${mmShortName(o).replace(/\(.*$/, "")} (${mmFmtNum(o.x)}, ${mmFmtNum(o.y)}, ${mmFmtNum(o.z)})`; }
         else if (o.kind === "segment" || o.kind === "vector" || o.kind === "ray") { wx = (o.x1 + o.x2) / 2; wy = (o.y1 + o.y2) / 2; label = `${o.name}`; }
-        else if (o.kind === "polygon" && o.pts && o.pts.length) { wx = o.pts[0][0]; wy = o.pts[0][1]; label = `${o.name}`; }
+        else if ((o.kind === "polygon" || o.kind === "polyline") && o.pts && o.pts.length) { wx = o.pts[0][0]; wy = o.pts[0][1]; label = `${o.name}`; }
         else if (o.kind === "angle") { wx = o.bx; wy = o.by; try { label = `${o.name} ${Math.round(angleDegOf(o).deg * 10) / 10}°`; } catch { label = o.name; } }
         else if (o.cx !== undefined) { wx = o.cx; wy = o.cy; label = o.name; }
         if (wx !== undefined) {
@@ -2477,7 +2546,7 @@ function mmIsDraggableHit(hit) {
   if (!hit || !hit.obj) return false;
   const o = hit.obj;
   if (o.kind === "point" || o.kind === "point3d" || o.kind === "segment" || o.kind === "vector" ||
-      o.kind === "ray" || o.kind === "polygon" || o.kind === "angle" || o.kind === "arc" ||
+      o.kind === "ray" || o.kind === "polygon" || o.kind === "polyline" || o.kind === "angle" || o.kind === "arc" ||
       o.kind === "sector" || o.kind === "ellipse" || o.kind === "text" || o.kind === "image" ||
       o.kind === "vline" || o.kind === "hyperbola") return true;
   if (o.kind === "fn") return mmIsLinearFn(o);
@@ -2492,13 +2561,35 @@ canvas.addEventListener("pointerdown", (e) => {
   if (state.mode === "3d") {
     const t3 = state.tool || "move";
     try { if (typeof mmFlyRaf !== "undefined" && mmFlyRaf) { try { cancelAnimationFrame(mmFlyRaf); } catch {} mmFlyRaf = 0; } } catch {}
+    try { if (typeof mmStopSpin === "function") mmStopSpin(); } catch {}
+    // cảm ứng 2 ngón: ngón thứ 2 chạm vào -> chuyển sang pinch zoom/di chuyển
+    if (e.pointerType === "touch") {
+      try {
+        interact.touches = interact.touches || new Map();
+        interact.touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        if (interact.touches.size === 2) {
+          const pts = [...interact.touches.values()];
+          interact.pinch = {
+            d0: Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) || 1,
+            scale0: state.view3d.scale,
+            mx0: (pts[0].x + pts[1].x) / 2, my0: (pts[0].y + pts[1].y) / 2,
+            tx0: state.view3d.tx, ty0: state.view3d.ty,
+          };
+          interact.orbit = null; interact.drag = null; drag = null;
+          try { canvas.classList.remove("mm-dragging"); } catch {}
+          return;
+        }
+        if (interact.touches.size > 2) return;
+      } catch {}
+    }
     if (!["move", "select", "pan", "m3d-move"].includes(t3)) {
       const fl = screenToFloor(px, py);
       let z = 0;
       const sel = state.objects.find(o => o.id === state.selectedId && o.kind === "surface");
       if (sel) { try { const zz = sel.fn(fl.x, fl.y); if (isFinite(zz)) z = clamp(zz, -8, 8); } catch {} }
+      else z = mmDefaultZ3D(e);
       state.lastClick3d = { x: fl.x, y: fl.y, z };
-      handleToolClick3D(fl.x, fl.y, z, px, py);
+      handleToolClick3D(fl.x, fl.y, z, px, py, e);
       return;
     }
     if (t3 === "pan") {
@@ -2507,16 +2598,21 @@ canvas.addEventListener("pointerdown", (e) => {
       return;
     }
     const hit3 = hitTest3D(px, py);
-    mmSetHover(hit3 ? { obj: hit3.obj, part: "point", vertex: -1, d: hit3.d, rank: 0 } : null);
-    if (hit3) {
-      const o = hit3.obj;
+    // không trúng điểm rời -> thử bắt đầu mút / đỉnh đa giác qua đúng điểm cha
+    let grab3 = hit3 ? hit3.obj : null;
+    if (!grab3) { try { grab3 = (typeof mmGrabParentPoint3D === "function") ? mmGrabParentPoint3D(px, py) : null; } catch { grab3 = null; } }
+    mmSetHover(grab3 ? { obj: grab3, part: "point", vertex: -1, d: (hit3 ? hit3.d : 6), rank: (hit3 ? 0 : 1) } : null);
+    if (grab3) {
+      const o = grab3;
       state.selectedId = o.id;
+      if (o.kind === "point3d" && isFinite(o.z)) state.lastZ3d = o.z;
       mmBeginDragTx();
       interact.drag = {
         mode3d: true, candidate: true, active: false, objId: o.id,
         sx: e.clientX, sy: e.clientY, px, py,
         ox: o.x, oy: o.y, oz: o.kind === "point3d" ? o.z : 0,
-        zMode: !!e.altKey, noSnap: !!e.altKey, moved: false,
+        zMode: !!(e.altKey || e.shiftKey), _pz: !!(e.altKey || e.shiftKey),
+        noSnap: !!(e.altKey || e.shiftKey), moved: false,
       };
       drag = null;
       try { renderList($("#algebraSearch") ? $("#algebraSearch").value : ""); } catch {}
@@ -2557,10 +2653,10 @@ canvas.addEventListener("pointerdown", (e) => {
         }
         return null;
       };
-      if (o.kind === "segment" || o.kind === "vector") {
-        if (hit.part === "p1") srcPointId = (o.def && o.def.p1) || eqP(o.x1, o.y1);
-        if (hit.part === "p2") srcPointId = (o.def && o.def.p2) || eqP(o.x2, o.y2);
-      } else if (o.kind === "polygon" && hit.part === "vertex" && o.pts) {
+      if (o.kind === "segment" || o.kind === "vector" || o.kind === "ray") {
+        if (hit.part === "p1") srcPointId = (o.def && (o.def.p1 || o.def.vId || o.def.oId)) || eqP(o.x1, o.y1);
+        if (hit.part === "p2" && o.kind !== "ray") srcPointId = (o.def && o.def.p2) || eqP(o.x2, o.y2);
+      } else if ((o.kind === "polygon" || o.kind === "polyline") && hit.part === "vertex" && o.pts) {
         const vv = o.pts[hit.vertex];
         if (vv) srcPointId = (o.def && o.def.vIds && o.def.vIds[hit.vertex]) || eqP(vv[0], vv[1]);
       } else if (o.kind === "angle") {
@@ -2598,7 +2694,7 @@ canvas.addEventListener("dblclick", (e) => {
     return;
   }
   if (state.mode !== "2d") return;
-  if ((state.tool === "polygon" || state.tool === "oriented" || state.tool === "plist" || state.tool === "regression") && state.pending.length >= 2) {
+  if ((state.tool === "polygon" || state.tool === "oriented" || state.tool === "polyline" || state.tool === "plist" || state.tool === "regression") && state.pending.length >= 2) {
     state.pending.splice(-2); // bỏ 2 điểm của chính cú đúp
     if (!finishPending()) draw();
   }
@@ -2631,6 +2727,60 @@ function mmUpdateDrag2D(px, py, e) {
   const markOld = (p) => { p._oldX = p.x; p._oldY = p.y; };
   try {
     if (o.kind === "point") {
+      // Điểm thuộc/dính có tham số: trượt DỌC hình (θ/t từ con trỏ), không snap tự do.
+      const DT0 = o.def || {};
+      if ((DT0.type === "pointon" || DT0.type === "attach") && DT0.refId) {
+        const ref0 = mmGetObj(DT0.refId);
+        if (!ref0 || ref0.error) {
+          // ref đã mất: gỡ ràng buộc thành điểm tự do (báo 1 lần).
+          pushHistory();
+          delete o.parents; delete o.def;
+          renderList($("#algebraSearch") ? $("#algebraSearch").value : ""); draw(); persist();
+          toast(`Đã gỡ ${o.name} khỏi hình (hình gốc không còn).`, "ok");
+        } else {
+          let pos = null, extra = "";
+          if (DT0.theta != null && (ref0.kind === "arc" || ref0.kind === "sector" || ref0.kind === "implicit")) {
+            let ccx, ccy, crr;
+            if (ref0.kind === "arc" || ref0.kind === "sector") { ccx = ref0.cx; ccy = ref0.cy; crr = ref0.r; }
+            else { const m = mmCircleMetaOf(ref0) || { cx: ref0.cx, cy: ref0.cy, r: ref0.cr }; ccx = m.cx; ccy = m.cy; crr = m.r || ref0.cr; }
+            if (isFinite(ccx) && crr > 0) {
+              let th = Math.atan2(wy - ccy, wx - ccx);
+              if (ref0.kind === "arc" || ref0.kind === "sector") th = mmClampAngleToSpanCCW(th, ref0.a0, ref0.a1);
+              else th = mmNormAngle(th);
+              pos = { x: ccx + crr * Math.cos(th), y: ccy + crr * Math.sin(th) };
+              DT0.theta = th;
+              extra = ` · θ=${Math.round(th * 180 / Math.PI)}°`;
+            }
+          } else if (DT0.t != null && (ref0.kind === "segment" || ref0.kind === "vector" || ref0.kind === "ray")) {
+            const dx = ref0.x2 - ref0.x1, dy = ref0.y2 - ref0.y1, l2 = dx * dx + dy * dy;
+            if (l2 >= 1e-12) {
+              let t = ((wx - ref0.x1) * dx + (wy - ref0.y1) * dy) / l2;
+              if (ref0.kind !== "ray") t = Math.min(1, Math.max(0, t)); else t = Math.max(0, t);
+              pos = { x: ref0.x1 + t * dx, y: ref0.y1 + t * dy };
+              DT0.t = t;
+              extra = ` · t=${Math.round(t * 100) / 100}`;
+            }
+          }
+          if (!pos) {
+            pos = mmProjectToObj(wx, wy, ref0);
+            if (pos) {
+              const prm = mmCurveParamOf(ref0, pos.x, pos.y);
+              if (prm.theta != null) DT0.theta = prm.theta;
+              if (prm.t != null) DT0.t = prm.t;
+            }
+          }
+          if (pos && isFinite(pos.x) && isFinite(pos.y)) {
+            markOld(o);
+            o.x = mmClamp(pos.x, -1e9, 1e9); o.y = mmClamp(pos.y, -1e9, 1e9);
+            mmSyncPointNameExpr(o);
+            propagateUpdates([o.id]);
+            interact.snapInfo = { x: o.x, y: o.y };
+            try { $("#hudCoords").textContent = `x: ${mmFmtNum(o.x)} · y: ${mmFmtNum(o.y)} · trên ${ref0.name}${extra}`; } catch {}
+            mmScheduleDraw(); mmScheduleAlgebra(false);
+            return;
+          }
+        }
+      }
       const s = doSnap(wx, wy, o.id);
       markOld(o);
       o.x = mmClamp(s.x, -1e9, 1e9); o.y = mmClamp(s.y, -1e9, 1e9);
@@ -2647,10 +2797,44 @@ function mmUpdateDrag2D(px, py, e) {
       interact.snapInfo = s.snapped ? { x: s.x, y: s.y } : null;
     } else if (o.kind === "segment" || o.kind === "vector" || o.kind === "ray") {
       if (D.part === "p1" || D.part === "p2") {
-        const s = doSnap(wx, wy, o.id);
-        if (D.part === "p1") { o.x1 = s.x; o.y1 = s.y; } else { o.x2 = s.x; o.y2 = s.y; }
-        mmSyncGeomExpr(o);
-        interact.snapInfo = s.snapped ? { x: s.x, y: s.y } : null;
+        const DTs = o.def || {};
+        let handled = false;
+        if (DTs.type === "vecfrom" && D.part === "p2" && DTs.d2) {
+          // Kéo ngọn véc-tơ: dời điểm hướng d2 theo delta tổng (gốc giữ nguyên).
+          const b = mmGetObj(DTs.d2);
+          const ox2 = (D.orig && isFinite(D.orig.x2)) ? D.orig.x2 : o.x2;
+          const oy2 = (D.orig && isFinite(D.orig.y2)) ? D.orig.y2 : o.y2;
+          if (b && isFinite(b.x)) {
+            if (!D.linkedOrig) D.linkedOrig = {};
+            if (!D.linkedOrig[b.id]) D.linkedOrig[b.id] = { x: b.x, y: b.y };
+            markOld(b);
+            b.x = mmClamp(D.linkedOrig[b.id].x + (wx - ox2), -1e9, 1e9);
+            b.y = mmClamp(D.linkedOrig[b.id].y + (wy - oy2), -1e9, 1e9);
+            mmSyncPointNameExpr(b); propagateUpdates([b.id]);
+            interact.snapInfo = null;
+            handled = true;
+          }
+        } else if (DTs.type === "fixedseg" && D.part === "p2" && DTs.pId) {
+          // Kéo ngọn đoạn cố định: đổi độ dài + góc trong def (gốc giữ nguyên).
+          const p = mmGetObj(DTs.pId);
+          if (p && isFinite(p.x)) {
+            const len = Math.hypot(wx - p.x, wy - p.y);
+            if (len > 0.05) {
+              DTs.len = mmRound2(mmClamp(len, 0.2, 100));
+              DTs.ang = Math.round(Math.atan2(wy - p.y, wx - p.x) * 180 / Math.PI * 10) / 10;
+              try { recomputeObject(o); } catch {}
+              interact.snapInfo = null;
+              try { $("#hudCoords").textContent = `${o.name} · dài=${mmFmtNum(DTs.len)} ∠=${mmFmtNum(DTs.ang)}°`; } catch {}
+              handled = true;
+            }
+          }
+        }
+        if (!handled) {
+          const s = doSnap(wx, wy, o.id);
+          if (D.part === "p1") { o.x1 = s.x; o.y1 = s.y; } else { o.x2 = s.x; o.y2 = s.y; }
+          mmSyncGeomExpr(o);
+          interact.snapInfo = s.snapped ? { x: s.x, y: s.y } : null;
+        }
       } else {
         // move cả object: delta từ world0, đồng thời dời các point trùng đầu mút
         const dx = wx - D.world0.x, dy = wy - D.world0.y;
@@ -2697,7 +2881,7 @@ function mmUpdateDrag2D(px, py, e) {
         if (movedIds.length) propagateUpdates(movedIds);
         interact.snapInfo = null;
       }
-    } else if (o.kind === "polygon" && o.pts) {
+    } else if ((o.kind === "polygon" || o.kind === "polyline") && o.pts) {
       if (D.part === "vertex" && D.vertex >= 0) {
         const s = doSnap(wx, wy, o.id);
         o.pts[D.vertex] = [s.x, s.y];
@@ -2741,16 +2925,49 @@ function mmUpdateDrag2D(px, py, e) {
       mmSyncGeomExpr(o);
       interact.snapInfo = s.snapped ? { x: s.x, y: s.y } : null;
     } else if (o.kind === "arc" || o.kind === "sector") {
+      // Kéo TÂM = dịch nguyên hình (dời mọi điểm nguồn); kéo VÀNH = co giãn quanh tâm.
+      const DTa = o.def || {};
+      const depA = mmArcDepIds(o);
+      const depAok = depA.length && depA.every(id => { const q = mmGetObj(id); return q && isFinite(q.x) && isFinite(q.y); });
       if (D.part === "center") {
-        const s = doSnap(wx, wy, o.id);
-        o.cx = s.x; o.cy = s.y;
-        mmSyncGeomExpr(o);
-        interact.snapInfo = s.snapped ? { x: s.x, y: s.y } : null;
+        if (depAok) {
+          mmTranslateDepPoints(D, depA, wx - D.world0.x, wy - D.world0.y);
+          interact.snapInfo = null;
+          try { $("#hudCoords").textContent = `${o.name} · dịch nguyên hình`; } catch {}
+        } else if (!depA.length) {
+          const s = doSnap(wx, wy, o.id);
+          o.cx = s.x; o.cy = s.y;
+          mmSyncGeomExpr(o);
+          interact.snapInfo = s.snapped ? { x: s.x, y: s.y } : null;
+        }
       } else {
-        const r = Math.hypot(wx - o.cx, wy - o.cy);
-        o.r = mmClamp(r, 0.1, 1e6);
-        mmSyncGeomExpr(o);
-        interact.snapInfo = null;
+        let ccx = o.cx, ccy = o.cy, sIds = null;
+        if ((DTa.type === "arc" || DTa.type === "sector") && DTa.cId && DTa.sId && DTa.eId) {
+          const c = mmGetObj(DTa.cId);
+          if (c && isFinite(c.x)) { ccx = c.x; ccy = c.y; sIds = [DTa.sId, DTa.eId]; }
+        } else if (DTa.type === "semicircle" && DTa.p1 && DTa.p2) {
+          const a = mmGetObj(DTa.p1), b = mmGetObj(DTa.p2);
+          if (a && b && isFinite(a.x) && isFinite(b.x)) { ccx = (a.x + b.x) / 2; ccy = (a.y + b.y) / 2; sIds = [DTa.p1, DTa.p2]; }
+        } else if ((DTa.type === "arc3" || DTa.type === "sector3") && DTa.p1 && DTa.p2 && DTa.p3) {
+          const a = mmGetObj(DTa.p1), b = mmGetObj(DTa.p2), c = mmGetObj(DTa.p3);
+          if (a && b && c && isFinite(a.x) && isFinite(b.x) && isFinite(c.x)) {
+            try { const cc = mmCircumcenter(a.x, a.y, b.x, b.y, c.x, c.y); ccx = cc.x; ccy = cc.y; sIds = [DTa.p1, DTa.p2, DTa.p3]; }
+            catch { sIds = null; }
+          }
+        }
+        const oldR = (D.orig && isFinite(D.orig.r) && D.orig.r > 0) ? D.orig.r : o.r;
+        const newR = Math.hypot(wx - ccx, wy - ccy);
+        const sObjs = (sIds || []).map(mmGetObj).filter(q => q && isFinite(q.x) && isFinite(q.y));
+        if (sIds && sObjs.length === sIds.length && oldR > 1e-9 && newR > 0.05) {
+          mmScaleDepPointsAbout(D, sIds, ccx, ccy, mmClamp(newR / oldR, 0.05, 20));
+          interact.snapInfo = null;
+          try { $("#hudCoords").textContent = `${o.name} · R=${mmFmtNum(newR)}`; } catch {}
+        } else if (!sIds) {
+          const r = Math.hypot(wx - o.cx, wy - o.cy);
+          o.r = mmClamp(r, 0.1, 1e6);
+          mmSyncGeomExpr(o);
+          interact.snapInfo = null;
+        }
       }
     } else if (o.kind === "ellipse") {
       if (D.part === "center") {
@@ -2784,11 +3001,18 @@ function mmUpdateDrag2D(px, py, e) {
       mmSyncGeomExpr(o);
       interact.snapInfo = s.snapped ? { x: s.x, y: s.y } : null;
     } else if (o.kind === "fn" && mmIsLinearFn(o)) {
-      // đường thẳng y=mx+c: tịnh tiến theo delta (dx,dy)
+      // đường thẳng y=mx+c: tịnh tiến theo delta (dx,dy) — dời ĐÚNG điểm nguồn
+      // từng loại def (tránh sót p3 của phân giác, cực điểm của tangent/polar...).
       const dx = wx - D.world0.x, dy = wy - D.world0.y;
-      if (o.def && (o.def.p1 || o.def.refId || o.def.aId)) {
+      const DTl = o.def || {};
+      let ids = null;
+      if (DTl.type === "bisector") ids = [DTl.p1, DTl.p2, DTl.p3];
+      else if (DTl.type === "tangent" || DTl.type === "polar") ids = [DTl.pId];
+      else if (DTl.type === "regression") ids = (DTl.vIds || []).slice();
+      else if (DTl.p1 || DTl.refId || DTl.aId) ids = [DTl.p1, DTl.p2, DTl.aId];
+      if (ids && (ids.filter(Boolean).length || DTl.ax != null)) {
+        ids = ids.filter(Boolean);
         // có dependency: dời các point nguồn rồi recompute
-        const ids = [o.def.p1, o.def.p2, o.def.aId].filter(Boolean);
         if (!D.linkedOrig) D.linkedOrig = {};
         for (const id of ids) {
           const q = mmGetObj(id);
@@ -2799,10 +3023,10 @@ function mmUpdateDrag2D(px, py, e) {
           q.y = mmClamp(D.linkedOrig[id].y + dy, -1e9, 1e9);
           mmSyncPointNameExpr(q);
         }
-        if (o.def.aId && !o.def.p1) {
-          // perp/parallel neo thô (ax,ay): dời neo
-          if (D.origAx === undefined) { D.origAx = o.def.ax; D.origAy = o.def.ay; }
-          o.def.ax = D.origAx + dx; o.def.ay = D.origAy + dy;
+        if (!ids.length && DTl.ax != null && DTl.ay != null) {
+          // perp/parallel neo thô legacy (ax,ay): dời neo
+          if (D.origAx === undefined) { D.origAx = DTl.ax; D.origAy = DTl.ay; }
+          DTl.ax = D.origAx + dx; DTl.ay = D.origAy + dy;
         }
         propagateUpdates(ids.length ? ids : [o.id]);
         // recompute line từ propagate nếu o phụ thuộc chính nó? đảm bảo recompute o
@@ -2827,10 +3051,17 @@ function mmUpdateDrag2D(px, py, e) {
       }
       interact.snapInfo = null;
     } else if (o.kind === "implicit" && mmCircleMetaOf(o)) {
-      if (o.def && o.def.cId && o.def.rId) {
+      // Kéo TÂM = dịch nguyên hình; kéo VÀNH = đổi bán kính qua điểm nguồn (giữ def).
+      const DTc = o.def || {};
+      if (o.def && o.def.cId && o.def.rId && DTc.type === "circle") {
         if (D.part === "center") {
-          const c = mmGetObj(o.def.cId);
-          if (c) {
+          const c = mmGetObj(o.def.cId), rp = mmGetObj(o.def.rId);
+          if (c && rp && isFinite(rp.x) && isFinite(rp.y)) {
+            // GeoGebra: kéo tâm DỊCH NGUYÊN hình (điểm vành đi theo, R giữ nguyên).
+            mmTranslateDepPoints(D, [o.def.cId, o.def.rId], wx - D.world0.x, wy - D.world0.y);
+            interact.snapInfo = null;
+            try { $("#hudCoords").textContent = `${o.name} · dịch nguyên hình`; } catch {}
+          } else if (c) {
             const s = doSnap(wx, wy, c.id);
             markOld(c); c.x = s.x; c.y = s.y; mmSyncPointNameExpr(c);
             propagateUpdates([c.id]);
@@ -2850,6 +3081,45 @@ function mmUpdateDrag2D(px, py, e) {
             mmSyncGeomExpr(o);
             try { const p = parseCommand(o.expr); o.fn = p.fn; o.error = null; } catch {}
           }
+        }
+      } else if (DTc.type === "circleCR" && DTc.cId) {
+        const c = mmGetObj(DTc.cId);
+        if (D.part === "center" && c) {
+          const s = doSnap(wx, wy, c.id);
+          markOld(c); c.x = s.x; c.y = s.y; mmSyncPointNameExpr(c);
+          propagateUpdates([c.id]);
+          interact.snapInfo = s.snapped ? { x: s.x, y: s.y } : null;
+        } else if (D.part !== "center") {
+          const nr = mmClamp(Math.hypot(wx - (c ? c.x : o.cx), wy - (c ? c.y : o.cy)), 0.2, 20);
+          DTc.r = mmRound2(nr);
+          try { recomputeObject(o); } catch {}
+          interact.snapInfo = null;
+          try { $("#hudCoords").textContent = `${o.name} · R=${mmFmtNum(nr)}`; } catch {}
+        }
+      } else if (DTc.type === "compass" && DTc.cId && DTc.r1 && DTc.r2) {
+        const c = mmGetObj(DTc.cId), a = mmGetObj(DTc.r1);
+        if (D.part === "center" && c) {
+          mmTranslateDepPoints(D, [DTc.cId, DTc.r1, DTc.r2], wx - D.world0.x, wy - D.world0.y);
+          interact.snapInfo = null;
+        } else if (D.part !== "center" && a && isFinite(a.x)) {
+          const oldR = (D.orig && isFinite(D.orig.cr) && D.orig.cr > 0) ? D.orig.cr : Math.hypot(wx - a.x, wy - a.y);
+          const newR = Math.hypot(wx - a.x, wy - a.y);
+          if (oldR > 1e-9 && newR > 0.05) mmScaleDepPointsAbout(D, [DTc.r2], a.x, a.y, mmClamp(newR / oldR, 0.05, 20));
+          interact.snapInfo = null;
+          try { $("#hudCoords").textContent = `${o.name} · R=${mmFmtNum(newR)}`; } catch {}
+        }
+      } else if (DTc.type === "circle3" && DTc.p1 && DTc.p2 && DTc.p3) {
+        const pa = mmGetObj(DTc.p1), pb = mmGetObj(DTc.p2), pc = mmGetObj(DTc.p3);
+        if (D.part === "center" && pa && pb && pc) {
+          mmTranslateDepPoints(D, [DTc.p1, DTc.p2, DTc.p3], wx - D.world0.x, wy - D.world0.y);
+          interact.snapInfo = null;
+        } else if (D.part !== "center" && pa && pb && pc) {
+          let ccx = o.cx, ccy = o.cy;
+          try { const cc = mmCircumcenter(pa.x, pa.y, pb.x, pb.y, pc.x, pc.y); ccx = cc.x; ccy = cc.y; } catch {}
+          const oldR = (D.orig && isFinite(D.orig.cr) && D.orig.cr > 0) ? D.orig.cr : o.cr;
+          const newR = Math.hypot(wx - ccx, wy - ccy);
+          if (oldR > 1e-9 && newR > 0.05) mmScaleDepPointsAbout(D, [DTc.p1, DTc.p2, DTc.p3], ccx, ccy, mmClamp(newR / oldR, 0.05, 20));
+          interact.snapInfo = null;
         }
       } else {
         const meta = mmCircleMetaOf(o);
@@ -2883,13 +3153,18 @@ function mmUpdateDrag3D(px, py, e) {
   if (!D || !D.mode3d) return;
   const o = mmGetObj(D.objId);
   if (!o) return;
-  D.zMode = !!e.altKey;
+  // Alt hoặc Shift đều nâng Z (Shift dễ bấm hơn, Alt giữ để tương thích cũ).
+  const wantZ = !!(e.altKey || e.shiftKey);
+  if (wantZ !== !!D._pz) { D.oz = (o.kind === "point3d" && isFinite(o.z)) ? o.z : (D.oz || 0); D.sy = e.clientY; D._pz = wantZ; }
+  D.zMode = wantZ;
+  D.noSnap = wantZ;
   try {
     if (D.zMode) {
       const sc = state.view3d.scale || 36;
       const dz = (D.sy - e.clientY) / sc;
       o.z = mmClamp(mmRound2(D.oz + dz), -50, 50);
       mmSyncPointNameExpr(o);
+      mmRememberZ3D(o.z);
     } else {
       const r = screenToPlaneZ(px, py, D.oz);
       o.x = mmClamp(r.x, -500, 500); o.y = mmClamp(r.y, -500, 500);
@@ -2900,10 +3175,71 @@ function mmUpdateDrag3D(px, py, e) {
   } catch {}
   mmScheduleDraw(); mmScheduleAlgebra(false);
 }
+/* Bắt đầu mút đoạn / đỉnh đa giác 3D qua đúng điểm cha (để kéo là dependency cập nhật).
+   WHAT: con trỏ gần đầu mút nào có parents point3d -> trả về point cha đó.
+   WHY: trước đây chỉ kéo được điểm rời; giờ kéo trực tiếp góc đa giác, đầu đoạn. */
+function mmGrabParentPoint3D(px, py) {
+  const R = 15;
+  for (const o of state.objects) {
+    if (!o.visible || o.error || !o.def) continue;
+    try {
+      const cands = [];
+      if ((o.kind === "segment3d" || o.kind === "vector3d" || o.kind === "line3d" || o.kind === "ray3d") && o.a && o.b) {
+        if (o.def.p1) cands.push({ xy: o.a, pid: o.def.p1 });
+        if (o.def.p2) cands.push({ xy: o.b, pid: o.def.p2 });
+      } else if (o.kind === "polygon3d" && o.vertices && o.def.vIds) {
+        o.vertices.forEach((vv, i) => { if (o.def.vIds[i]) cands.push({ xy: vv, pid: o.def.vIds[i] }); });
+      }
+      for (const q of cands) {
+        if (!q.pid || !q.xy) continue;
+        let s;
+        try { s = proj3(q.xy[0], q.xy[1], q.xy[2]); } catch { continue; }
+        if (Math.hypot(px - s.sx, py - s.sy) > R) continue;
+        const p = mmGetObj(q.pid);
+        if (p && (p.kind === "point3d" || p.kind === "point") && !p.error && p.visible) return p;
+      }
+    } catch {}
+  }
+  return null;
+}
+/* Quán tính xoay 3D (thả tay vẫn trớn dần rồi dừng một cách tự nhiên). */
+let mmSpinRaf = 0;
+function mmStopSpin() { try { if (mmSpinRaf) cancelAnimationFrame(mmSpinRaf); } catch {} mmSpinRaf = 0; }
+function mmOrbitInertia(vAz, vEl) {
+  mmStopSpin();
+  let va = vAz, ve = vEl;
+  if (!isFinite(va) || !isFinite(ve) || Math.hypot(va, ve) < 0.0008) return;
+  const step = () => {
+    va *= 0.94; ve *= 0.94;
+    if (Math.hypot(va, ve) < 0.0006) { mmSpinRaf = 0; try { persist(); } catch {} return; }
+    state.view3d.az += va;
+    state.view3d.el = clamp(state.view3d.el + ve, -1.55, 1.55);
+    draw();
+    mmSpinRaf = requestAnimationFrame(step);
+  };
+  mmSpinRaf = requestAnimationFrame(step);
+}
 canvas.addEventListener("pointermove", (e) => {
   const r = canvas.getBoundingClientRect();
   const px = e.clientX - r.left, py = e.clientY - r.top;
   if (state.mode === "3d") {
+    // pinch 2 ngón: zoom + di chuyển (cảm ứng)
+    if (e.pointerType === "touch" && interact.touches) {
+      try {
+        if (interact.touches.has(e.pointerId)) interact.touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        if (interact.pinch && interact.touches.size >= 2) {
+          const pts = [...interact.touches.values()].slice(0, 2);
+          const d = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) || 1;
+          state.view3d.scale = clamp(interact.pinch.scale0 * d / interact.pinch.d0, 0.4, 6000);
+          const sc = state.view3d.scale || 36;
+          const mx = (pts[0].x + pts[1].x) / 2, my = (pts[0].y + pts[1].y) / 2;
+          state.view3d.tx = clamp(interact.pinch.tx0 + (mx - interact.pinch.mx0) / sc, -1e6, 1e6);
+          state.view3d.ty = clamp(interact.pinch.ty0 - (my - interact.pinch.my0) / sc, -1e6, 1e6);
+          draw();
+          return;
+        }
+      } catch {}
+    }
     if (interact.drag && interact.drag.mode3d) {
       const D = interact.drag;
       if (!D.active && Math.hypot(e.clientX - D.sx, e.clientY - D.sy) > DRAG_THRESHOLD) {
@@ -2926,35 +3262,51 @@ canvas.addEventListener("pointermove", (e) => {
         const u = -dx / sc, v = -dy / (se * sc);
         state.view3d.tx = clamp(O.tx + (-ca * u + sa * v), -1e6, 1e6);
         state.view3d.ty = clamp(O.ty + (sa * u + ca * v), -1e6, 1e6);
+        O.vAz = 0; O.vEl = 0;
       } else {
+        // xoay tự do 4 phương 8 hướng: az vô hạn, el từ dưới nền (-88°) tới đỉnh (+88°)
         state.view3d.az = O.az + dx * 0.008;
-        state.view3d.el = clamp(O.el + dy * 0.006, 0.12, 1.5);
+        state.view3d.el = clamp(O.el + dy * 0.006, -1.55, 1.55);
+        // đo vận tốc cho quán tính khi thả tay
+        const now = performance.now();
+        if (O.lastT && now > O.lastT) {
+          const dt = now - O.lastT;
+          const iAz = (state.view3d.az - O.lastAz) / dt * 16, iEl = (state.view3d.el - O.lastEl) / dt * 16;
+          O.vAz = 0.7 * (O.vAz || 0) + 0.3 * iAz;
+          O.vEl = 0.7 * (O.vEl || 0) + 0.3 * iEl;
+        }
+        O.lastAz = state.view3d.az; O.lastEl = state.view3d.el; O.lastT = now;
       }
       draw();
       return;
     }
-    // hover 3D
+    // hover 3D: điểm > đỉnh/đầu mút cha > vật thể (kèm gợi ý HUD)
     try {
-      let hov = null;
-      if (/^m3d-/.test(state.tool || "") && typeof mmPick3D === "function") {
-        const pk = mmPick3D(px, py);
-        if (pk) hov = { obj: pk.obj, part: "body", vertex: -1, d: pk.d, rank: 2 };
-        else {
-          const hit3 = hitTest3D(px, py);
-          if (hit3) hov = { obj: hit3.obj, part: "point", vertex: -1, d: hit3.d, rank: 0 };
-        }
+      let hov = null, hovName = null;
+      const hit3 = hitTest3D(px, py);
+      if (hit3) {
+        hov = { obj: hit3.obj, part: "point", vertex: -1, d: hit3.d, rank: 0 };
+        hovName = `${hit3.obj.name} · kéo để di chuyển (Shift/Alt=Z)`;
       } else {
-        const hit3 = hitTest3D(px, py);
-        if (hit3) hov = { obj: hit3.obj, part: "point", vertex: -1, d: hit3.d, rank: 0 };
+        let gp = null;
+        try { gp = (typeof mmGrabParentPoint3D === "function") ? mmGrabParentPoint3D(px, py) : null; } catch { gp = null; }
+        if (gp) {
+          hov = { obj: gp, part: "point", vertex: -1, d: 6, rank: 1 };
+          hovName = `${gp.name} · kéo để di chuyển (Shift/Alt=Z)`;
+        } else if (typeof mmPick3D === "function") {
+          let pk = null;
+          try { pk = mmPick3D(px, py); } catch { pk = null; }
+          if (pk) { hov = { obj: pk.obj, part: "body", vertex: -1, d: pk.d, rank: 2 }; hovName = `${pk.obj.name}`; }
+        }
       }
       mmSetHover(hov);
-      if (!hit3) {
+      if (hovName) {
+        try { $("#hudCoords").textContent = hovName; } catch {}
+      } else {
         try {
           const fl = screenToFloor(px, py);
           $("#hudCoords").textContent = `x: ${fl.x.toFixed(2)} · y: ${fl.y.toFixed(2)} · kéo để xoay`;
         } catch {}
-      } else {
-        try { $("#hudCoords").textContent = `${hit3.obj.name} · kéo để di chuyển (Alt=Z)`; } catch {}
       }
     } catch {}
     return;
@@ -3033,6 +3385,18 @@ function mmEndDrag3D(commit) {
 canvas.addEventListener("pointerup", (e) => {
   mmDbg("up", state.mode);
   if (state.mode === "3d") {
+    // dọn theo dõi cảm ứng đa điểm
+    try {
+      if (e.pointerType === "touch" && interact.touches && interact.touches.has(e.pointerId)) {
+        interact.touches.delete(e.pointerId);
+        if (interact.pinch) {
+          if (interact.touches.size < 2) { interact.pinch = null; try { persist(); } catch {} }
+          drag = null;
+          if (interact.touches.size > 0) return; // ngón còn lại: chờ chạm lại, không kẹt orbit
+          return;
+        }
+      }
+    } catch {}
     if (interact.drag && interact.drag.mode3d) { mmEndDrag3D(true); drag = null; return; }
     if (interact.orbit) {
       const O = interact.orbit;
@@ -3049,6 +3413,10 @@ canvas.addEventListener("pointerup", (e) => {
         try { renderList($("#algebraSearch") ? $("#algebraSearch").value : ""); draw(); } catch {}
       }
       interact.orbit = null; drag = null;
+      // thả tay khi đang xoay nhanh -> trớn quán tính rồi dừng
+      try {
+        if (O.moved && !O.pan && !e.shiftKey && Math.hypot(O.vAz || 0, O.vEl || 0) > 0.0012) mmOrbitInertia(O.vAz, O.vEl);
+      } catch {}
       return;
     }
     drag = null;
@@ -3082,6 +3450,11 @@ canvas.addEventListener("pointercancel", (e) => {
   try {
     if (state.mode === "3d" && interact.drag && interact.drag.mode3d) { mmEndDrag3D(true); }
     else if (interact.drag) { mmEndDrag2D(true); }
+    try {
+      if (interact.touches && interact.touches.has(e.pointerId)) interact.touches.delete(e.pointerId);
+      if (!interact.touches || interact.touches.size < 2) interact.pinch = null;
+    } catch {}
+    try { if (typeof mmStopSpin === "function") mmStopSpin(); } catch {}
     interact.pan = null; interact.orbit = null; drag = null;
     try { canvas.classList.remove("mm-dragging"); } catch {}
   } catch {}
@@ -3293,6 +3666,14 @@ function nearestObject(px, py) {
           m = Math.min(m, distPtSeg(px, py, A[0], A[1], B[0], B[1]));
         }
         d = m;
+      } else if (o.kind === "polyline") {
+        let m = Infinity;
+        const P = (o.pts || []).map(p => toScreen(p[0], p[1]));
+        for (let i = 0; i + 1 < P.length; i++) {
+          const A = P[i], B = P[i + 1];
+          m = Math.min(m, distPtSeg(px, py, A[0], A[1], B[0], B[1]));
+        }
+        d = m;
       } else if (o.kind === "angle" || o.kind === "arc" || o.kind === "sector" || o.kind === "text") {
         const [sx, sy] = toScreen(o.bx ?? o.cx ?? o.x, o.by ?? o.cy ?? o.y);
         d = Math.hypot(px - sx, py - sy);
@@ -3362,9 +3743,11 @@ function mmSnapDrag(x, y, excludeId, px, py) {
           t = mmClamp(t, 0, 1);
           bestC = { x: o.x1 + t * vx, y: o.y1 + t * vy, kind: o.kind }; bdC = d;
         }
-      } else if (o.kind === "polygon" && o.pts) {
+      } else if ((o.kind === "polygon" || o.kind === "polyline") && o.pts) {
+        const closed = o.kind === "polygon";
         const S = o.pts.map(p => toScreen(p[0], p[1]));
-        for (let i = 0; i < S.length; i++) {
+        const n = closed ? S.length : S.length - 1;
+        for (let i = 0; i < n; i++) {
           const A = S[i], B = S[(i + 1) % S.length];
           const d = distPtSeg(px, py, A[0], A[1], B[0], B[1]);
           if (d < bdC) {
@@ -3416,8 +3799,9 @@ function mmSyncGeomExpr(o) {
   try {
     if (o.kind === "segment" || o.kind === "ray" || o.kind === "vector") {
       o.expr = `${o.kind}(${mmFmtNum(o.x1)},${mmFmtNum(o.y1)},${mmFmtNum(o.x2)},${mmFmtNum(o.y2)})`;
-    } else if (o.kind === "polygon" && o.pts) {
-      o.expr = `polygon(${o.pts.map(p => `(${mmFmtNum(p[0])},${mmFmtNum(p[1])})`).join(",")})`;
+    } else if ((o.kind === "polygon" || o.kind === "polyline") && o.pts) {
+      const tag = o.kind === "polyline" ? "polyline" : "polygon";
+      o.expr = `${tag}(${o.pts.map(p => `(${mmFmtNum(p[0])},${mmFmtNum(p[1])})`).join(",")})`;
     } else if (o.kind === "angle") {
       o.expr = `angle(${mmFmtNum(o.ax)},${mmFmtNum(o.ay)},${mmFmtNum(o.bx)},${mmFmtNum(o.by)},${mmFmtNum(o.cx)},${mmFmtNum(o.cy)})`;
     } else if (o.kind === "arc" || o.kind === "sector") {
@@ -3471,6 +3855,134 @@ function mmCircumcenter(ax, ay, bx, by, cx, cy) {
     y: (a2 * (cx - bx) + b2 * (ax - cx) + c2 * (bx - ax)) / d,
   };
 }
+/* ---- Góc / cung CCW: chuẩn hoá, kiểm tra thuộc span, kẹp về span ---- */
+function mmNormAngle(t) { const TAU = Math.PI * 2; return ((t % TAU) + TAU) % TAU; }
+function mmAngleInSpanCCW(t, a0, a1) {
+  const TAU = Math.PI * 2;
+  let s = mmNormAngle(a0), e = mmNormAngle(a1);
+  t = mmNormAngle(t);
+  if (e <= s) e += TAU;
+  if (t < s) t += TAU;
+  return t <= e + 1e-9;
+}
+function mmClampAngleToSpanCCW(t, a0, a1) {
+  if (mmAngleInSpanCCW(t, a0, a1)) return mmNormAngle(t);
+  // ngoài span: dính về đầu mút gần nhất (theo khoảng cách góc)
+  const TAU = Math.PI * 2;
+  const d = (u, v) => { let dd = Math.abs(mmNormAngle(u) - mmNormAngle(v)) % TAU; return Math.min(dd, TAU - dd); };
+  return d(t, a0) <= d(t, a1) ? mmNormAngle(a0) : mmNormAngle(a1);
+}
+/* Tham số hoá điểm-trên-cung: circle/arc -> theta; đoạn/tia/véc-tơ -> t.
+   Lưu vào def giúp điểm giữ vị trí góc ổn định khi hình gốc di chuyển. */
+function mmCurveParamOf(ref, x, y) {
+  if (!ref || ref.error) return {};
+  try {
+    if (ref.kind === "arc" || ref.kind === "sector") {
+      if (!isFinite(ref.cx) || !(ref.r > 0)) return {};
+      return { theta: Math.atan2(y - ref.cy, x - ref.cx) };
+    }
+    if (ref.kind === "implicit" && (ref.cx !== undefined || ref.cr)) {
+      const m = mmCircleMetaOf(ref) || { cx: ref.cx, cy: ref.cy, r: ref.cr };
+      if (!isFinite(m.cx) || !(m.r > 0)) return {};
+      return { theta: Math.atan2(y - m.cy, x - m.cx) };
+    }
+    if (ref.kind === "segment" || ref.kind === "vector" || ref.kind === "ray") {
+      const dx = ref.x2 - ref.x1, dy = ref.y2 - ref.y1, l2 = dx * dx + dy * dy;
+      if (l2 < 1e-12) return {};
+      let t = ((x - ref.x1) * dx + (y - ref.y1) * dy) / l2;
+      if (ref.kind !== "ray") t = Math.min(1, Math.max(0, t)); else t = Math.max(0, t);
+      return { t };
+    }
+  } catch {}
+  return {};
+}
+/* Vị trí điểm-trên-cung từ tham số đã lưu (null nếu không tham số hoá được). */
+function mmPointOnCurvePos(ref, def) {
+  if (!ref || ref.error || !def) return null;
+  try {
+    if (def.theta != null && isFinite(def.theta)) {
+      let ccx, ccy, crr;
+      if (ref.kind === "arc" || ref.kind === "sector") {
+        if (!isFinite(ref.cx) || !(ref.r > 0)) return null;
+        ccx = ref.cx; ccy = ref.cy; crr = ref.r;
+        const th = mmClampAngleToSpanCCW(def.theta, ref.a0, ref.a1);
+        return { x: ccx + crr * Math.cos(th), y: ccy + crr * Math.sin(th), theta: th };
+      }
+      if (ref.kind === "implicit") {
+        const m = mmCircleMetaOf(ref) || { cx: ref.cx, cy: ref.cy, r: ref.cr };
+        if (!isFinite(m.cx) || !(m.r > 0)) return null;
+        return { x: m.cx + m.r * Math.cos(def.theta), y: m.cy + m.r * Math.sin(def.theta), theta: mmNormAngle(def.theta) };
+      }
+      return null;
+    }
+    if (def.t != null && isFinite(def.t) && (ref.kind === "segment" || ref.kind === "vector" || ref.kind === "ray")) {
+      const dx = ref.x2 - ref.x1, dy = ref.y2 - ref.y1;
+      let t = def.t;
+      if (ref.kind !== "ray") t = Math.min(1, Math.max(0, t)); else t = Math.max(0, t);
+      return { x: ref.x1 + t * dx, y: ref.y1 + t * dy, t };
+    }
+  } catch {}
+  return null;
+}
+/* Tìm point object trùng toạ độ (để compa mượn bán kính từ đoạn thẳng). */
+function mmPointIdAt(x, y, excludeId) {
+  for (const q of state.objects) {
+    if (q.kind !== "point" || q.id === excludeId || q.error) continue;
+    if (Math.abs(q.x - x) < 1e-9 && Math.abs(q.y - y) < 1e-9) return q.id;
+  }
+  return null;
+}
+/* Danh sách id điểm nguồn của circle/arc (dịch nguyên hình / co giãn quanh tâm). */
+function mmCircleDepIds(o) {
+  const D = (o && o.def) || {};
+  if (D.type === "circle") return [D.cId, D.rId].filter(Boolean);
+  if (D.type === "compass") return [D.cId, D.r1, D.r2].filter(Boolean);
+  if (D.type === "circle3") return [D.p1, D.p2, D.p3].filter(Boolean);
+  if (D.type === "circleCR") return [D.cId].filter(Boolean);
+  return [];
+}
+function mmArcDepIds(o) {
+  const D = (o && o.def) || {};
+  if (D.type === "semicircle") return [D.p1, D.p2].filter(Boolean);
+  if (D.type === "arc" || D.type === "sector") return [D.cId, D.sId, D.eId].filter(Boolean);
+  if (D.type === "arc3" || D.type === "sector3") return [D.p1, D.p2, D.p3].filter(Boolean);
+  return [];
+}
+/* Dịch các điểm nguồn theo delta tổng (dùng linkedOrig chống cộng dồn). */
+function mmTranslateDepPoints(D, ids, dx, dy) {
+  if (!D.linkedOrig) D.linkedOrig = {};
+  const moved = [];
+  for (const id of ids) {
+    const q = mmGetObj(id);
+    if (!q || !isFinite(q.x) || !isFinite(q.y)) continue;
+    if (!D.linkedOrig[id]) D.linkedOrig[id] = { x: q.x, y: q.y };
+    q._oldX = q.x; q._oldY = q.y;
+    q.x = mmClamp(D.linkedOrig[id].x + dx, -1e9, 1e9);
+    q.y = mmClamp(D.linkedOrig[id].y + dy, -1e9, 1e9);
+    mmSyncPointNameExpr(q);
+    moved.push(id);
+  }
+  if (moved.length) propagateUpdates(moved);
+  return moved;
+}
+/* Co giãn các điểm nguồn quanh tâm (cx,cy) theo tỉ số k (giữ góc, đổi bán kính). */
+function mmScaleDepPointsAbout(D, ids, cx, cy, k) {
+  if (!D.linkedOrig) D.linkedOrig = {};
+  k = mmClamp(k, 0.05, 20);
+  const moved = [];
+  for (const id of ids) {
+    const q = mmGetObj(id);
+    if (!q || !isFinite(q.x) || !isFinite(q.y)) continue;
+    if (!D.linkedOrig[id]) D.linkedOrig[id] = { x: q.x, y: q.y };
+    q._oldX = q.x; q._oldY = q.y;
+    q.x = mmClamp(cx + (D.linkedOrig[id].x - cx) * k, -1e9, 1e9);
+    q.y = mmClamp(cy + (D.linkedOrig[id].y - cy) * k, -1e9, 1e9);
+    mmSyncPointNameExpr(q);
+    moved.push(id);
+  }
+  if (moved.length) propagateUpdates(moved);
+  return moved;
+}
 /* Chiếu điểm (x,y) lên đối tượng ref -> điểm gần nhất thuộc hình (cho Điểm thuộc/Dính). */
 function mmProjectToObj(x, y, ref) {
   if (!ref || ref.error) return null;
@@ -3508,9 +4020,12 @@ function mmProjectToObj(x, y, ref) {
     const c = Math.cos(ref.rot || 0), s = Math.sin(ref.rot || 0);
     return { x: ref.cx + px * c - py * s, y: ref.cy + px * s + py * c };
   }
-  if (ref.kind === "polygon" && ref.pts && ref.pts.length) {
+  if ((ref.kind === "polygon" || ref.kind === "polyline") && ref.pts && ref.pts.length) {
+    const closed = ref.kind === "polygon";
+    if (!closed && ref.pts.length < 2) return null;
     let best = null, bd = 1e18;
-    for (let i = 0; i < ref.pts.length; i++) {
+    const n = closed ? ref.pts.length : ref.pts.length - 1;
+    for (let i = 0; i < n; i++) {
       const A = ref.pts[i], B = ref.pts[(i + 1) % ref.pts.length];
       const dx = B[0] - A[0], dy = B[1] - A[1], l2 = dx * dx + dy * dy || 1;
       const t = Math.min(1, Math.max(0, ((x - A[0]) * dx + (y - A[1]) * dy) / l2));
@@ -3546,6 +4061,27 @@ function mmDefParents(o) {
     else if (Array.isArray(v)) for (const u of v) if (typeof u === "string") out.push(u);
   }
   return [...new Set(out.filter(Boolean))];
+}
+/* Dựng lại object đường thẳng (fn/vline) từ 2 điểm (dùng chung cho line,
+   midperp, perp, parallel, bisector, tangent, polar). Trả về true nếu đổi. */
+function mmSetLineFrom2Pts(o, nx1, ny1, nx2, ny2) {
+  try {
+    let newExpr;
+    if (Math.abs(nx2 - nx1) < 1e-9) newExpr = `x = ${mmFmtNum(nx1)}`;
+    else {
+      const m = (ny2 - ny1) / (nx2 - nx1), c0 = ny1 - m * nx1;
+      if (Math.abs(m) < 5e-4) newExpr = `${mmFmtNum(c0)}`;
+      else newExpr = `${mmFmtNum(m)}*x + ${mmFmtNum(c0)}`;
+    }
+    o.expr = newExpr;
+    const p = parseCommand(newExpr);
+    o.kind = p.kind;
+    if (p.kind === "fn") { o.fn = p.fn; delete o.x; }
+    else if (p.kind === "vline") { o.x = p.x; delete o.fn; }
+    else { o.fn = p.fn; }
+    o.error = null;
+    return true;
+  } catch (e) { o.error = e.message; return false; }
 }
 /* Dựng lại 1 object từ parents (nếu có def). Trả về true nếu đã đổi. */
 function recomputeObject(o) {
@@ -3626,32 +4162,62 @@ function recomputeObject(o) {
         if (Math.hypot(dx, dy) < 1e-9) { dx = -uy / lu; dy = ux / lu; }
         nx1 = b.x; ny1 = b.y; nx2 = b.x + dx; ny2 = b.y + dy;
       } else return false;
-      // dựng lại expr tuyến tính từ 2 điểm (nx1,ny1)-(nx2,ny2)
-      let newExpr;
-      if (Math.abs(nx2 - nx1) < 1e-9) newExpr = `x = ${mmFmtNum(nx1)}`;
-      else {
-        const m = (ny2 - ny1) / (nx2 - nx1), c0 = ny1 - m * nx1;
-        if (Math.abs(m) < 5e-4) newExpr = `${mmFmtNum(c0)}`;
-        else newExpr = `${mmFmtNum(m)}*x + ${mmFmtNum(c0)}`;
-      }
-      o.expr = newExpr;
-      try {
-        const p = parseCommand(newExpr);
-        o.kind = p.kind;
-        if (p.kind === "fn") { o.fn = p.fn; delete o.x; }
-        else if (p.kind === "vline") { o.x = p.x; delete o.fn; }
-        else { o.fn = p.fn; }
-        o.error = null;
-      } catch (e) { o.error = e.message; return false; }
-      return true;
+      return mmSetLineFrom2Pts(o, nx1, ny1, nx2, ny2);
     }
-    /* Điểm thuộc / dính trên đối tượng: chiếu vị trí hiện tại lên ref (giữ dính khi hình gốc đổi). */
+    /* Tiếp tuyến với đường tròn tại/qua điểm P (kéo P hoặc tròn đều cập nhật).
+       P trong tròn -> giữ hình cũ + báo lỗi (không có tiếp tuyến thật). */
+    if ((o.kind === "fn" || o.kind === "vline" || o.kind === "implicit") && D.type === "tangent" && D.circleId && D.pId) {
+      const C = P(D.circleId), Q = P(D.pId);
+      if (!C || !Q || C.error) return false;
+      const meta = (C.cx !== undefined) ? { cx: C.cx, cy: C.cy, r: C.cr } : mmCircleMetaOf(C.expr || "");
+      if (!meta || !(meta.r > 0) || !isFinite(meta.cx) || !isFinite(meta.cy)) return false;
+      const dx = Q.x - meta.cx, dy = Q.y - meta.cy, d = Math.hypot(dx, dy);
+      if (d < meta.r - 1e-9) { o.error = "Điểm nằm trong đường tròn — không có tiếp tuyến."; return false; }
+      if (d <= meta.r + 1e-9) {
+        return mmSetLineFrom2Pts(o, Q.x, Q.y, Q.x - dy, Q.y + dx);
+      }
+      const th = Math.atan2(dy, dx), be = Math.acos(clamp(meta.r / d, -1, 1));
+      const s = (D.branch === -1) ? -1 : 1;
+      const u = th + s * be;
+      const tx = meta.cx + meta.r * Math.cos(u), ty = meta.cy + meta.r * Math.sin(u);
+      return mmSetLineFrom2Pts(o, tx, ty, tx - (ty - meta.cy), ty + (tx - meta.cx));
+    }
+    /* Cực / đường kính (Polar): cực ngoài/trên -> dây cung tiếp xúc;
+       cực trong -> đường kính qua tâm và P (chuẩn GeoGebra PolarOrDiameter). */
+    if ((o.kind === "fn" || o.kind === "vline" || o.kind === "implicit") && D.type === "polar" && D.circleId && D.pId) {
+      const C = P(D.circleId), Q = P(D.pId);
+      if (!C || !Q || C.error) return false;
+      const meta = (C.cx !== undefined) ? { cx: C.cx, cy: C.cy, r: C.cr } : mmCircleMetaOf(C.expr || "");
+      if (!meta || !(meta.r > 0) || !isFinite(meta.cx) || !isFinite(meta.cy)) return false;
+      const dx = Q.x - meta.cx, dy = Q.y - meta.cy, d = Math.hypot(dx, dy);
+      if (d < 1e-9) return false;
+      if (d < meta.r - 1e-9) {
+        return mmSetLineFrom2Pts(o, meta.cx, meta.cy, meta.cx + dx, meta.cy + dy);
+      }
+      const th = Math.atan2(dy, dx), be = Math.acos(clamp(meta.r / d, -1, 1));
+      const t1x = meta.cx + meta.r * Math.cos(th + be), t1y = meta.cy + meta.r * Math.sin(th + be);
+      const t2x = meta.cx + meta.r * Math.cos(th - be), t2y = meta.cy + meta.r * Math.sin(th - be);
+      return mmSetLineFrom2Pts(o, t1x, t1y, t2x, t2y);
+    }
+    /* Điểm thuộc / dính trên đối tượng: ưu tiên tham số θ/t đã lưu (giữ vị trí góc
+       ổn định khi hình gốc đổi); fallback chiếu gần nhất cho ref không tham số hoá. */
     if (o.kind === "point" && (D.type === "pointon" || D.type === "attach") && D.refId) {
       const ref = P(D.refId);
       if (!ref || ref.error) return false;
+      const qp = mmPointOnCurvePos(ref, D);
+      if (qp && isFinite(qp.x)) {
+        o.x = qp.x; o.y = qp.y;
+        if (qp.theta != null) D.theta = qp.theta;
+        if (qp.t != null) D.t = qp.t;
+        mmSyncPointNameExpr(o);
+        return true;
+      }
       const q = mmProjectToObj(o.x, o.y, ref);
       if (!q || !isFinite(q.x)) return false;
       o.x = q.x; o.y = q.y;
+      const prm = mmCurveParamOf(ref, q.x, q.y);
+      if (prm.theta != null) D.theta = prm.theta;
+      if (prm.t != null) D.t = prm.t;
       mmSyncPointNameExpr(o);
       return true;
     }
@@ -3748,6 +4314,15 @@ function recomputeObject(o) {
       try { const p = parseCommand(o.expr); o.fn = p.fn; o.error = null; } catch (e) { o.error = e.message; }
       return true;
     }
+    /* Đường tròn tâm + bán kính số (Tool #4): tâm chạy theo điểm nguồn, R cố định. */
+    if (o.kind === "implicit" && D.type === "circleCR" && D.cId && isFinite(+D.r)) {
+      const c = P(D.cId);
+      if (!c || !isFinite(c.x)) return false;
+      o.cx = c.x; o.cy = c.y; o.cr = +D.r;
+      mmSyncGeomExpr(o);
+      try { const p = parseCommand(o.expr); o.fn = p.fn; o.error = null; } catch (e) { o.error = e.message; }
+      return true;
+    }
     /* Bán nguyệt (đường kính p1-p2) và cung/quạt có tâm (cId + điểm đầu/cuối). */
     if ((o.kind === "arc" || o.kind === "sector") && D.type === "semicircle" && D.p1 && D.p2) {
       const a = P(D.p1), b = P(D.p2);
@@ -3838,6 +4413,18 @@ function recomputeObject(o) {
       } catch { return false; }
       return true;
     }
+    /* Hồi quy tuyến tính (least-squares): kéo điểm số liệu -> đường khớp lại. */
+    if ((o.kind === "fn" || o.kind === "vline") && D.type === "regression" && D.vIds && D.vIds.length >= 2) {
+      const pts = [];
+      for (const id of D.vIds) { const q = P(id); if (!q || !isFinite(q.x) || !isFinite(q.y)) return false; pts.push([q.x, q.y]); }
+      const n = pts.length;
+      const mx = pts.reduce((a, p) => a + p[0], 0) / n, my = pts.reduce((a, p) => a + p[1], 0) / n;
+      let sxx = 0, sxy = 0;
+      for (const p of pts) { sxx += (p[0] - mx) * (p[0] - mx); sxy += (p[0] - mx) * (p[1] - my); }
+      if (Math.abs(sxx) < 1e-9) return mmSetLineFrom2Pts(o, mx, my - 1, mx, my + 1);
+      const m = sxy / sxx, c = my - m * mx;
+      return mmSetLineFrom2Pts(o, mx - 1, m * (mx - 1) + c, mx + 1, m * (mx + 1) + c);
+    }
     /* Đa giác đều (tâm + đỉnh + n), vector từ điểm, đa giác vector, đa giác có hướng. */
     if (o.kind === "polygon" && D.type === "regpoly" && D.cId && D.vId && isFinite(D.n)) {
       const c = P(D.cId), v = P(D.vId);
@@ -3871,6 +4458,13 @@ function recomputeObject(o) {
         dx = b.x - a.x; dy = b.y - a.y;
       }
       o.pts = base.pts.map(q => [q[0] + dx, q[1] + dy]);
+      mmSyncGeomExpr(o);
+      return true;
+    }
+    if (o.kind === "polyline" && D.type === "polyline" && D.vIds && D.vIds.length >= 2) {
+      const pts = [];
+      for (const id of D.vIds) { const q = P(id); if (!q || !isFinite(q.x)) return false; pts.push([q.x, q.y]); }
+      o.pts = pts;
       mmSyncGeomExpr(o);
       return true;
     }
@@ -4188,7 +4782,7 @@ function applyLegacyCoordLinks(changedIds) {
           if (eq(o.x1, ox) && eq(o.y1, oy)) { o.x1 = nx; o.y1 = ny; touched = true; }
           if (eq(o.x2, ox) && eq(o.y2, oy)) { o.x2 = nx; o.y2 = ny; touched = true; }
           if (touched) mmSyncGeomExpr(o);
-        } else if (o.kind === "polygon" && o.pts) {
+        } else if ((o.kind === "polygon" || o.kind === "polyline") && o.pts) {
           for (const q of o.pts) if (eq(q[0], ox) && eq(q[1], oy)) { q[0] = nx; q[1] = ny; touched = true; }
           if (touched) mmSyncGeomExpr(o);
         } else if (o.kind === "angle") {
@@ -4275,7 +4869,7 @@ function mmSelPoly3D() {
   return null;
 }
 function mmP3(e) { return [e.x, e.y, e.z || 0]; }
-function handleToolClick3D(x, y, z, px, py) {
+function handleToolClick3D(x, y, z, px, py, e) {
   state.lastClick = { x, y };
   state.lastClick3d = { x, y, z };
   const T = state.tool || "move";
@@ -4283,7 +4877,7 @@ function handleToolClick3D(x, y, z, px, py) {
   // công cụ Điểm 2D khi đang ở 3D -> tạo điểm 3D (tương thích cũ)
   if (T === "point") {
     try {
-      const rs = (px !== undefined) ? mmResolveClick3D(px, py) : { p: [x, y, z], id: null };
+      const rs = (px !== undefined) ? mmResolveClick3D(px, py, e) : { p: [x, y, z], id: null };
       if (rs.id) {
         const ex = mmGetObj(rs.id);
         state.selectedId = rs.id;
@@ -4292,6 +4886,7 @@ function handleToolClick3D(x, y, z, px, py) {
         return;
       }
       const o = mmAddDirect3D("point3d", { x: R(rs.p[0]), y: R(rs.p[1]), z: R(rs.p[2]) });
+      mmRememberZ3D(o.z);
       toast(`Đã tạo điểm 3D ${o.name}`, "ok");
     } catch (e) { toast(e.message, "err"); }
     return;
@@ -4300,7 +4895,7 @@ function handleToolClick3D(x, y, z, px, py) {
     toast("Công cụ này chỉ dùng ở chế độ 2D — hãy bấm nút 2D.", undefined);
     return;
   }
-  const snap = (px !== undefined) ? mmResolveClick3D(px, py) : { p: [x, y, z], id: null };
+  const snap = (px !== undefined) ? mmResolveClick3D(px, py, e) : { p: [x, y, z], id: null };
   const P = state.pending;
   const pushSnap = () => {
     if (snap.id) { const q = mmGetObj(snap.id); P.push({ x: q.x, y: q.y, z: q.kind === "point3d" ? q.z : 0, _pid: q.id }); }
@@ -4324,6 +4919,7 @@ function handleToolClick3D(x, y, z, px, py) {
         toast(`Đã bắt điểm ${ex.name} (snap).`, "ok");
       } else {
         const o = mmAddDirect3D("point3d", { x: R(snap.p[0]), y: R(snap.p[1]), z: R(snap.p[2]) });
+        mmRememberZ3D(o.z);
         toast(`Đã tạo điểm 3D ${o.name}`, "ok");
       }
       return;
@@ -4833,20 +5429,33 @@ function finishPending() {
   if (t === "polygon" || t === "oriented") {
     if (P.length < 3) { toast("Đa giác cần ít nhất 3 đỉnh.", "err"); return false; }
     try {
+      const h0 = state.history.length;
+      const vIds = P.map(p => mmEnsureControlPoint(p)).filter(Boolean);
       const o = addObject(`polygon(${P.map(p => `(${round2(p.x)},${round2(p.y)})`).join(",")})`);
-      const vIds = P.map(p => p._pid).filter(Boolean);
       if (o && vIds.length === P.length) {
         if (t === "oriented") {
           const pts = P.map(p => [p.x, p.y]);
           mmAttachParents(o, vIds, { type: "oriented", vIds, orient: mmOrientName(pts) });
         } else mmAttachParents(o, vIds, { type: "polygon", vIds });
       }
+      mmCollapseBatch(h0);
       state.pending = []; draw();
       if (t === "oriented") {
         const pts = o.pts || P.map(p => [p.x, p.y]);
         toast(`Đã tạo ${o.name} có hướng ${mmOrientName(pts)}.`, "ok");
       } else toast(`Đã tạo ${o.name} (${P.length} đỉnh).`, "ok");
       return true;
+    } catch (e) { toast(e.message, "err"); return false; }
+  }
+  if (t === "polyline") {
+    if (P.length < 2) { toast("Đường gấp khúc cần ít nhất 2 điểm.", "err"); return false; }
+    try {
+      const h0 = state.history.length;
+      const vIds = P.map(p => mmEnsureControlPoint(p)).filter(Boolean);
+      const o = addObject(`polyline(${P.map(p => `(${round2(p.x)},${round2(p.y)})`).join(",")})`);
+      if (o && vIds.length === P.length) mmAttachParents(o, vIds, { type: "polyline", vIds });
+      mmCollapseBatch(h0);
+      state.pending = []; draw(); toast(`Đã tạo ${o.name} (${P.length} điểm).`, "ok"); return true;
     } catch (e) { toast(e.message, "err"); return false; }
   }
   if (t === "plist") {
@@ -4862,9 +5471,14 @@ function finishPending() {
     let sxx = 0, sxy = 0;
     for (const p of P) { sxx += (p.x - mx) * (p.x - mx); sxy += (p.x - mx) * (p.y - my); }
     try {
-      if (Math.abs(sxx) < 1e-9) addObject(`x = ${round2(mx)}`);
-      else { const m = sxy / sxx, c = my - m * mx; addObject(`${round2(m)}*x + ${round2(c)}`); }
-      state.pending = []; draw(); toast(`Đường hồi quy qua ${n} điểm.`, "ok"); return true;
+      const h0 = state.history.length;
+      const vIds = P.map(p => mmEnsureControlPoint(p)).filter(Boolean);
+      let o;
+      if (Math.abs(sxx) < 1e-9) o = addObject(`x = ${round2(mx)}`);
+      else { const m = sxy / sxx, c = my - m * mx; o = addObject(`${round2(m)}*x + ${round2(c)}`); }
+      if (o && vIds.length === P.length) mmAttachParents(o, vIds, { type: "regression", vIds });
+      mmCollapseBatch(h0);
+      state.pending = []; draw(); toast(`Đường hồi quy qua ${n} điểm (kéo điểm để khớp lại).`, "ok"); return true;
     } catch (e) { toast(e.message, "err"); return false; }
   }
   return false;
@@ -4895,6 +5509,30 @@ function mmAttachParents(o, ids, def) {
     if (uniq.length) { o.parents = uniq; o.def = def || o.def; }
     else if (def) { o.def = def; }
     persist();
+  } catch {}
+}
+/* Đảm bảo điểm điều khiển tồn tại (chuẩn GeoGebra: dựng hình xong luôn có đủ
+   điểm để kéo): tái dùng point đã snap (_pid), nếu không thì tạo FreePoint mới
+   ngay tại vị trí nhấp. Trả về id point (dùng bản silent để gộp undo ở ngoài). */
+function mmEnsureControlPoint(entry, color) {
+  if (!entry || !isFinite(entry.x) || !isFinite(entry.y)) return null;
+  if (entry._pid) {
+    const q = mmGetObj(entry._pid);
+    if (q && (q.kind === "point" || q.kind === "point3d")) return q.id;
+  }
+  try {
+    const o = markPointSilent(entry.x, entry.y, color || "#38bdf8");
+    if (o) { entry._pid = o.id; return o.id; }
+  } catch {}
+  return null;
+}
+/* Gộp mọi snapshot trong 1 thao tác dựng hình thành 1 bước undo duy nhất:
+   giữ snapshot ĐẦU (trạng thái trước thao tác), bỏ các snapshot giữa.
+   Chỉ thao tác trên đuôi mảng nên miễn nhiễm shift-at-cap ở đầu mảng. */
+function mmCollapseBatch(h0) {
+  try {
+    const n = state.history.length - h0;
+    if (n > 1 && n <= 12) state.history.splice(state.history.length - (n - 1), n - 1);
   } catch {}
 }
 function handleToolClick(x, y, px, py) {
@@ -4928,15 +5566,22 @@ function handleToolClick(x, y, px, py) {
       const dx = x - meta.cx, dy = y - meta.cy, d = Math.hypot(dx, dy);
       if (d < meta.r - 1e-9) { toast("Điểm nằm trong đường tròn — không có tiếp tuyến.", "err"); return; }
       try {
+        const h0 = state.history.length;
+        const tId = mmEnsureControlPoint({ x, y, _pid: (typeof __clickId !== "undefined" ? __clickId : null) });
         if (d <= meta.r + 1e-9) {
-          addObject(lineExprThrough(x, y, -(y - meta.cy), x - meta.cx), { color: "#fbbf24" });
+          const o = addObject(lineExprThrough(x, y, -(y - meta.cy), x - meta.cx), { color: "#fbbf24" });
+          if (o && tId) mmAttachParents(o, [sel.id, tId], { type: "tangent", circleId: sel.id, pId: tId, branch: 0 });
         } else {
+          // Điểm tiếp xúc T: góc u = th ± acos(R/d); hướng tuyến ⊥ bán kính CT.
           const th = Math.atan2(dy, dx), be = Math.acos(clamp(meta.r / d, -1, 1));
           for (const s of [1, -1]) {
-            const a = th + s * be;
-            addObject(lineExprThrough(x, y, Math.cos(a), Math.sin(a)), { color: "#fbbf24" });
+            const u = th + s * be;
+            const tx = meta.cx + meta.r * Math.cos(u), ty = meta.cy + meta.r * Math.sin(u);
+            const o = addObject(lineExprThrough(tx, ty, -(ty - meta.cy), tx - meta.cx), { color: "#fbbf24" });
+            if (o && tId) mmAttachParents(o, [sel.id, tId], { type: "tangent", circleId: sel.id, pId: tId, branch: s });
           }
         }
+        mmCollapseBatch(h0);
         toast(`Tiếp tuyến của ${sel.name} qua điểm chạm.`, "ok");
       } catch (e) { toast(e.message, "err"); }
       return;
@@ -4951,7 +5596,7 @@ function handleToolClick(x, y, px, py) {
     else if (T === "delete") { removeObject(o.id); toast(`Đã xóa ${o.name}`, "ok"); }
     else if (T === "toggle") { pushHistory(); o.visible = !o.visible; renderList($("#algebraSearch").value); draw(); persist(); toast(`${o.name}: ${o.visible ? "hiện" : "ẩn"}.`, "ok"); }
     else if (T === "names") {
-      if (!["point", "point3d", "segment", "ray", "vector", "polygon", "angle", "arc", "sector", "ellipse", "hyperbola"].includes(o.kind)) { toast("Công cụ Tên dùng cho điểm / hình.", "err"); return; }
+      if (!["point", "point3d", "segment", "ray", "vector", "polygon", "polyline", "angle", "arc", "sector", "ellipse", "hyperbola"].includes(o.kind)) { toast("Công cụ Tên dùng cho điểm / hình.", "err"); return; }
       pushHistory(); o.hideName = !o.hideName; renderList($("#algebraSearch").value); draw(); persist();
       toast(`${o.name}: ${o.hideName ? "ẩn tên" : "hiện tên"}.`, "ok");
     } else if (T === "style") {
@@ -4999,10 +5644,12 @@ function handleToolClick(x, y, px, py) {
     if (!d) { toast("Không tính được hướng của đường đã chọn.", "err"); return; }
     const dir = T === "perp" ? { dx: -d.dy, dy: d.dx } : d;
     try {
+      const h0 = state.history.length;
+      const aId = mmEnsureControlPoint({ x, y, _pid: (typeof __clickId !== "undefined" ? __clickId : null) });
       const o = addObject(lineExprThrough(x, y, dir.dx, dir.dy));
-      const aid = (typeof __clickId !== "undefined" && __clickId) ? __clickId : null;
-      if (aid) mmAttachParents(o, [ref.id, aid], { type: T === "perp" ? "perp" : "parallel", refId: ref.id, aId: aid });
+      if (aId) mmAttachParents(o, [ref.id, aId], { type: T === "perp" ? "perp" : "parallel", refId: ref.id, aId });
       else mmAttachParents(o, [ref.id], { type: T === "perp" ? "perp" : "parallel", refId: ref.id, ax: x, ay: y });
+      mmCollapseBatch(h0);
       toast(`${T === "perp" ? "Vuông góc" : "Song song"} với ${ref.name}: ${o.name}.`, "ok");
     }
     catch (e) { toast(e.message, "err"); }
@@ -5056,9 +5703,11 @@ function handleToolClick(x, y, px, py) {
     if (T === "conic5" && state.pending.length === 5) {
       try {
         const X = fitConic5(state.pending.map(p => [p.x, p.y]));
+        const h0 = state.history.length;
+        const vIds = state.pending.map(p => mmEnsureControlPoint(p)).filter(Boolean);
         const o = addObject(conic5Expr(X, state.pending));
-        const vIds = state.pending.map(p => p._pid).filter(Boolean);
         if (o && vIds.length === 5) mmAttachParents(o, vIds, { type: "conic5", vIds });
+        mmCollapseBatch(h0);
         state.pending = []; draw(); toast(`Cônic qua 5 điểm: ${o.name}.`, "ok");
       } catch (e) { state.pending = []; draw(); toast(e.message, "err"); }
     } else {
@@ -5068,7 +5717,7 @@ function handleToolClick(x, y, px, py) {
     return;
   }
   /* --- nhóm 2 chạm --- */
-  const pair2 = ["line", "circle", "segment", "ray", "vector", "midpoint", "midperp", "semicircle", "distance", "regpoly", "fixedseg", "anglefixed", "refpoint", "rotate", "dilate", "translate", "refline"];
+  const pair2 = ["line", "circle", "circleCR", "segment", "ray", "vector", "midpoint", "midperp", "semicircle", "distance", "regpoly", "fixedseg", "anglefixed", "refpoint", "rotate", "dilate", "translate", "refline"];
   if (pair2.includes(T)) {
     state.pending.push({ x, y, _pid: (typeof __clickId !== "undefined" ? __clickId : null) });
     if (state.pending.length === 1) {
@@ -5078,17 +5727,36 @@ function handleToolClick(x, y, px, py) {
         vector: "Điểm đặt — nhấp ngọn véc-tơ.", midpoint: "Điểm 1 — nhấp điểm 2.",
         midperp: "Điểm 1 — nhấp điểm 2.", semicircle: "Đầu A của đường kính — nhấp đầu B.",
         distance: "Điểm 1 — nhấp điểm 2.", regpoly: "Đã chọn tâm — nhấp đỉnh.",
-        fixedseg: null, anglefixed: null, refpoint: null, rotate: null, dilate: null,
+        fixedseg: null, circleCR: null, anglefixed: null, refpoint: null, rotate: null, dilate: null,
         translate: null, refline: null,
       }[T];
-      if (T === "fixedseg") {
+      if (T === "circleCR") {
+        mmModal({ title: "Đường tròn tâm + bán kính", okText: "Tạo", fields: [{ key: "r", label: "Bán kính R", value: 2, type: "number", min: 0.2, max: 20, step: 0.5 }] }).then(v => {
+          const [p] = state.pending; state.pending = [];
+          if (!v || !(+v.r > 0)) { draw(); return; }
+          try {
+            const h0 = state.history.length;
+            const cId = mmEnsureControlPoint(p);
+            const o = addObject(`(x - ${R(p.x)})^2 + (y - ${R(p.y)})^2 = ${R((+v.r) * (+v.r))}`);
+            o.cx = R(p.x); o.cy = R(p.y); o.cr = R(+v.r);
+            if (cId) { o.parents = [cId]; o.def = { type: "circleCR", cId, r: +v.r }; }
+            else o.def = { type: "circleCR", r: +v.r };
+            persist(); mmCollapseBatch(h0);
+            draw(); toast(`Đường tròn tâm (${R(p.x)}, ${R(p.y)}), R = ${+v.r}.`, "ok");
+          }
+          catch (e) { draw(); toast(e.message, "err"); }
+        });
+      } else if (T === "fixedseg") {
         mmModal({ title: "Đoạn thẳng cố định", okText: "Tạo", fields: [{ key: "len", label: "Độ dài", value: 3, type: "number", min: 0.2, max: 20, step: 0.5 }, { key: "ang", label: "Góc (độ)", value: 0, type: "number", step: 5 }] }).then(v => {
           const [p] = state.pending; state.pending = [];
           if (!v || !(+v.len > 0)) { draw(); return; }
           const a = (+v.ang || 0) * Math.PI / 180;
           try {
+            const h0 = state.history.length;
+            const pId = mmEnsureControlPoint(p);
             const o = addObject(`segment(${R(p.x)},${R(p.y)},${R(p.x + (+v.len) * Math.cos(a))},${R(p.y + (+v.len) * Math.sin(a))})`);
-            if (o && p._pid) mmAttachParents(o, [p._pid], { type: "fixedseg", pId: p._pid, len: +v.len, ang: +v.ang || 0 });
+            if (o && pId) mmAttachParents(o, [pId], { type: "fixedseg", pId, len: +v.len, ang: +v.ang || 0 });
+            mmCollapseBatch(h0);
             draw(); toast(`Đoạn dài ${+v.len}: ${o.name}.`, "ok");
           }
           catch (e) { draw(); toast(e.message, "err"); }
@@ -5102,10 +5770,13 @@ function handleToolClick(x, y, px, py) {
             const [c] = state.pending; state.pending = [];
             if (!v) { draw(); return; }
             const P = selectedPointObj(); if (!P) { draw(); return; }
+            const h0 = state.history.length;
+            const cId = mmEnsureControlPoint(c);
             const a = (+v.deg || 0) * Math.PI / 180;
             const dx = P.x - c.x, dy = P.y - c.y;
             const o = markPoint(c.x + dx * Math.cos(a) - dy * Math.sin(a), c.y + dx * Math.sin(a) + dy * Math.cos(a), P.color);
-            if (o && c._pid) mmAttachParents(o, [P.id, c._pid], { type: "rotate", sId: P.id, cId: c._pid, deg: +v.deg || 0 });
+            if (o && cId) mmAttachParents(o, [P.id, cId], { type: "rotate", sId: P.id, cId, deg: +v.deg || 0 });
+            mmCollapseBatch(h0);
             draw(); toast(`Đã quay ${P.name} ${+v.deg}°.`, "ok");
           });
         } else if (T === "dilate") {
@@ -5113,8 +5784,11 @@ function handleToolClick(x, y, px, py) {
             const [c] = state.pending; state.pending = [];
             if (!v || !isFinite(+v.k)) { draw(); return; }
             const P = selectedPointObj(); if (!P) { draw(); return; }
+            const h0 = state.history.length;
+            const cId = mmEnsureControlPoint(c);
             const o = markPoint(c.x + (P.x - c.x) * (+v.k), c.y + (P.y - c.y) * (+v.k), P.color);
-            if (o && c._pid) mmAttachParents(o, [P.id, c._pid], { type: "dilate", sId: P.id, cId: c._pid, k: +v.k });
+            if (o && cId) mmAttachParents(o, [P.id, cId], { type: "dilate", sId: P.id, cId, k: +v.k });
+            mmCollapseBatch(h0);
             draw(); toast(`Vị tự ${P.name} tỉ số ${+v.k}.`, "ok");
           });
         } else toast("Đã chọn tâm — tạo ảnh đối xứng.");
@@ -5127,46 +5801,68 @@ function handleToolClick(x, y, px, py) {
     const P = state.pending; state.pending = [];
     try {
       if (T === "line") {
+        const h0 = state.history.length;
+        const p1 = mmEnsureControlPoint(P[0]), p2 = mmEnsureControlPoint(P[1]);
         let o;
         if (Math.abs(P[1].x - P[0].x) < 1e-9) o = addObject(`x = ${R(P[0].x)}`);
         else { const m = (P[1].y - P[0].y) / (P[1].x - P[0].x), c = P[0].y - m * P[0].x; o = addObject(`${R(m)}*x + ${R(c)}`); }
-        if (o && P[0]._pid && P[1]._pid) mmAttachParents(o, [P[0]._pid, P[1]._pid], { type: "line", p1: P[0]._pid, p2: P[1]._pid });
+        if (o && p1 && p2) mmAttachParents(o, [p1, p2], { type: "line", p1, p2 });
+        mmCollapseBatch(h0);
       } else if (T === "circle") {
         const Rh = Math.hypot(P[1].x - P[0].x, P[1].y - P[0].y);
         if (Rh < 1e-9) throw new Error("Bán kính quá nhỏ.");
+        const h0 = state.history.length;
+        const cId = mmEnsureControlPoint(P[0]);
+        const rId = mmEnsureControlPoint(P[1]);
         const o = addObject(`(x - ${R(P[0].x)})^2 + (y - ${R(P[0].y)})^2 = ${R(Rh * Rh)}`);
         o.cx = R(P[0].x); o.cy = R(P[0].y); o.cr = R(Rh);
         o.def = { type: "circle" };
-        if (P[0]._pid && P[1]._pid) { o.parents = [P[0]._pid, P[1]._pid]; o.def = { type: "circle", cId: P[0]._pid, rId: P[1]._pid }; }
+        if (cId && rId) { o.parents = [cId, rId]; o.def = { type: "circle", cId, rId }; }
         persist();
+        mmCollapseBatch(h0);
       } else if (T === "segment" || T === "ray" || T === "vector") {
+        const h0 = state.history.length;
+        const p1 = mmEnsureControlPoint(P[0]), p2 = mmEnsureControlPoint(P[1]);
         const o = addObject(`${T}(${R(P[0].x)},${R(P[0].y)},${R(P[1].x)},${R(P[1].y)})`);
-        if (o && P[0]._pid && P[1]._pid) mmAttachParents(o, [P[0]._pid, P[1]._pid], { type: T, p1: P[0]._pid, p2: P[1]._pid });
+        if (o && p1 && p2) mmAttachParents(o, [p1, p2], { type: T, p1, p2 });
+        mmCollapseBatch(h0);
       } else if (T === "midpoint") {
+        const h0 = state.history.length;
+        const p1 = mmEnsureControlPoint(P[0]), p2 = mmEnsureControlPoint(P[1]);
         const o = markPoint((P[0].x + P[1].x) / 2, (P[0].y + P[1].y) / 2, "#34d399");
-        if (o && P[0]._pid && P[1]._pid) mmAttachParents(o, [P[0]._pid, P[1]._pid], { type: "midpoint", p1: P[0]._pid, p2: P[1]._pid });
+        if (o && p1 && p2) mmAttachParents(o, [p1, p2], { type: "midpoint", p1, p2 });
+        mmCollapseBatch(h0);
       } else if (T === "midperp") {
+        const h0 = state.history.length;
+        const p1 = mmEnsureControlPoint(P[0]), p2 = mmEnsureControlPoint(P[1]);
         const mx = (P[0].x + P[1].x) / 2, my = (P[0].y + P[1].y) / 2;
         const o = addObject(lineExprThrough(mx, my, -(P[1].y - P[0].y), P[1].x - P[0].x));
-        if (o && P[0]._pid && P[1]._pid) mmAttachParents(o, [P[0]._pid, P[1]._pid], { type: "midperp", p1: P[0]._pid, p2: P[1]._pid });
+        if (o && p1 && p2) mmAttachParents(o, [p1, p2], { type: "midperp", p1, p2 });
+        mmCollapseBatch(h0);
       } else if (T === "semicircle") {
         const cx = (P[0].x + P[1].x) / 2, cy = (P[0].y + P[1].y) / 2;
         const r = Math.hypot(P[1].x - P[0].x, P[1].y - P[0].y) / 2;
         if (r < 1e-9) throw new Error("Hai điểm trùng nhau.");
+        const h0 = state.history.length;
+        const p1 = mmEnsureControlPoint(P[0]), p2 = mmEnsureControlPoint(P[1]);
         const a0 = Math.atan2(P[0].y - cy, P[0].x - cx) * 180 / Math.PI;
         const o = addObject(`arc(${R(cx)},${R(cy)},${R(r)},${R(a0)},${R(a0 + 180)})`);
-        if (o && P[0]._pid && P[1]._pid) mmAttachParents(o, [P[0]._pid, P[1]._pid], { type: "semicircle", p1: P[0]._pid, p2: P[1]._pid });
+        if (o && p1 && p2) mmAttachParents(o, [p1, p2], { type: "semicircle", p1, p2 });
+        mmCollapseBatch(h0);
       } else if (T === "distance") {
         const d = Math.hypot(P[1].x - P[0].x, P[1].y - P[0].y);
+        const h0 = state.history.length;
+        const p1 = mmEnsureControlPoint(P[0]), p2 = mmEnsureControlPoint(P[1]);
         const oSeg = addObject(`segment(${R(P[0].x)},${R(P[0].y)},${R(P[1].x)},${R(P[1].y)})`);
-        if (oSeg && P[0]._pid && P[1]._pid) mmAttachParents(oSeg, [P[0]._pid, P[1]._pid], { type: "segment", p1: P[0]._pid, p2: P[1]._pid });
+        if (oSeg && p1 && p2) mmAttachParents(oSeg, [p1, p2], { type: "segment", p1, p2 });
         addObject(`text("d=${R(d)}",${R((P[0].x + P[1].x) / 2)},${R((P[0].y + P[1].y) / 2)})`, { color: "#34d399" });
+        mmCollapseBatch(h0);
         toast(`Khoảng cách = ${R(d)}.`, "ok");
       } else if (T === "regpoly") {
         const cx = P[0].x, cy = P[0].y, r = Math.hypot(P[1].x - cx, P[1].y - cy);
         if (r < 1e-9) throw new Error("Bán kính quá nhỏ.");
         const a0 = Math.atan2(P[1].y - cy, P[1].x - cx);
-        const cPid = P[0]._pid, vPid = P[1]._pid;
+        const cEntry = P[0], vEntry = P[1];
         mmModal({ title: "Đa giác đều", okText: "Tạo", fields: [{ key: "n", label: "Số cạnh (3–12)", value: 5, type: "number", min: 3, max: 12, step: 1 }] }).then(v => {
           const n = clamp(Math.round(+(v && v.n) || 5), 3, 12);
           if (!v) { draw(); return; }
@@ -5176,8 +5872,11 @@ function handleToolClick(x, y, px, py) {
             pts.push(`(${R(cx + r * Math.cos(a))},${R(cy + r * Math.sin(a))})`);
           }
           try {
+            const h0 = state.history.length;
+            const cPid = mmEnsureControlPoint(cEntry), vPid = mmEnsureControlPoint(vEntry);
             const o = addObject(`polygon(${pts.join(",")})`);
             if (o && cPid && vPid) mmAttachParents(o, [cPid, vPid], { type: "regpoly", cId: cPid, vId: vPid, n });
+            mmCollapseBatch(h0);
             draw(); toast(`${o.name}: ${n} cạnh đều.`, "ok");
           }
           catch (e) { draw(); toast(e.message, "err"); }
@@ -5186,13 +5885,16 @@ function handleToolClick(x, y, px, py) {
       } else if (T === "anglefixed") {
         const [V, A] = P;
         const base = Math.atan2(A.y - V.y, A.x - V.x);
-        const vPid = V._pid, aPid = A._pid;
+        const vEntry = V, aEntry = A;
         mmModal({ title: "Góc có độ lớn cho trước", okText: "Tạo tia", fields: [{ key: "deg", label: "Số độ", value: 45, type: "number", step: 5 }] }).then(v => {
           if (!v) { draw(); return; }
           const a = base + (+v.deg || 0) * Math.PI / 180;
           try {
+            const h0 = state.history.length;
+            const vPid = mmEnsureControlPoint(vEntry), aPid = mmEnsureControlPoint(aEntry);
             const o = addObject(`ray(${R(V.x)},${R(V.y)},${R(V.x + Math.cos(a))},${R(V.y + Math.sin(a))})`);
             if (o && vPid && aPid) mmAttachParents(o, [vPid, aPid], { type: "anglefixed", vId: vPid, aId: aPid, deg: +v.deg || 0 });
+            mmCollapseBatch(h0);
             draw(); toast(`Tia hợp ${+v.deg}°: ${o.name}.`, "ok");
           }
           catch (e) { draw(); toast(e.message, "err"); }
@@ -5200,22 +5902,31 @@ function handleToolClick(x, y, px, py) {
         draw(); return;
       } else if (T === "refpoint") {
         const S = selectedPointObj(); if (!S) throw new Error("Hãy chọn một điểm trong Đại số.");
+        const h0 = state.history.length;
+        const cId = mmEnsureControlPoint(P[0]);
         const o = markPoint(2 * P[0].x - S.x, 2 * P[0].y - S.y, S.color);
-        if (o && P[0]._pid) mmAttachParents(o, [S.id, P[0]._pid], { type: "refpoint", sId: S.id, cId: P[0]._pid });
+        if (o && cId) mmAttachParents(o, [S.id, cId], { type: "refpoint", sId: S.id, cId });
+        mmCollapseBatch(h0);
         toast(`Đối xứng ${S.name} qua tâm.`, "ok");
       } else if (T === "translate") {
         const S = selectedPointObj(); if (!S) throw new Error("Hãy chọn một điểm trong Đại số.");
+        const h0 = state.history.length;
+        const v1 = mmEnsureControlPoint(P[0]), v2 = mmEnsureControlPoint(P[1]);
         const o = markPoint(S.x + (P[1].x - P[0].x), S.y + (P[1].y - P[0].y), S.color);
-        if (o && P[0]._pid && P[1]._pid) mmAttachParents(o, [S.id, P[0]._pid, P[1]._pid], { type: "translate", sId: S.id, v1: P[0]._pid, v2: P[1]._pid });
+        if (o && v1 && v2) mmAttachParents(o, [S.id, v1, v2], { type: "translate", sId: S.id, v1, v2 });
+        mmCollapseBatch(h0);
         toast(`Tịnh tiến ${S.name} theo véc-tơ.`, "ok");
       } else if (T === "refline") {
         const S = selectedPointObj(); if (!S) throw new Error("Hãy chọn một điểm trong Đại số.");
         const [A, B] = P;
         const dx = B.x - A.x, dy = B.y - A.y, l2 = dx * dx + dy * dy;
         if (l2 < 1e-12) throw new Error("Trục suy biến.");
+        const h0 = state.history.length;
+        const aId = mmEnsureControlPoint(P[0]), bId = mmEnsureControlPoint(P[1]);
         const t = ((S.x - A.x) * dx + (S.y - A.y) * dy) / l2;
         const o = markPoint(2 * (A.x + t * dx) - S.x, 2 * (A.y + t * dy) - S.y, S.color);
-        if (o && P[0]._pid && P[1]._pid) mmAttachParents(o, [S.id, P[0]._pid, P[1]._pid], { type: "refline", sId: S.id, aId: P[0]._pid, bId: P[1]._pid });
+        if (o && aId && bId) mmAttachParents(o, [S.id, aId, bId], { type: "refline", sId: S.id, aId, bId });
+        mmCollapseBatch(h0);
         toast(`Đối xứng ${S.name} qua trục.`, "ok");
       }
       if (!["regpoly", "anglefixed"].includes(T)) toast("Đã dựng hình xong.", "ok");
@@ -5225,9 +5936,42 @@ function handleToolClick(x, y, px, py) {
   /* --- nhóm 3 chạm --- */
   const trio = ["bisector", "arc", "sector", "ellipse", "parabola", "hyperbola", "angle", "compass", "circle3", "arc3", "sector3"];
   if (trio.includes(T)) {
-    state.pending.push({ x, y, _pid: (typeof __clickId !== "undefined" ? __clickId : null) }); draw();
+    // Compa (Tool #2): sau khi chọn tâm, cho phép nhấp TRỰC TIẾP lên đoạn thẳng
+    // để mượn bán kính |AB| (khỏi nhấp 2 đầu mút). Ghi segId để truy vết.
+    if (T === "compass" && state.pending.length === 1) {
+      try {
+        const hitS = hitTest2D(px, py);
+        const S = hitS && (hitS.obj.kind === "segment" || hitS.obj.kind === "vector") &&
+          (hitS.part === "body" || hitS.part === "edge") ? hitS.obj : null;
+        if (S && Math.hypot(S.x2 - S.x1, S.y2 - S.y1) > 1e-9) {
+          let r1 = (S.def && (S.def.p1 || S.def.d1)) || null;
+          let r2 = (S.def && (S.def.p2 || S.def.d2)) || null;
+          if (r1 && !mmGetObj(r1)) r1 = null;
+          if (r2 && !mmGetObj(r2)) r2 = null;
+          if (!r1) r1 = mmPointIdAt(S.x1, S.y1, null);
+          if (!r2) r2 = mmPointIdAt(S.x2, S.y2, null);
+          state.pending.push(
+            { x: S.x1, y: S.y1, _pid: r1, _seg: S.id },
+            { x: S.x2, y: S.y2, _pid: r2, _seg: S.id }
+          );
+          draw();
+          toast(`Đã lấy bán kính từ ${S.name} — đang dựng compa…`);
+        } else {
+          state.pending.push({ x, y, _pid: (typeof __clickId !== "undefined" ? __clickId : null) }); draw();
+          toast("Điểm 2/3 — nhấp điểm cuối.");
+          return;
+        }
+      } catch {
+        state.pending.push({ x, y, _pid: (typeof __clickId !== "undefined" ? __clickId : null) }); draw();
+        toast("Điểm 2/3 — nhấp điểm cuối.");
+        return;
+      }
+    } else {
+      state.pending.push({ x, y, _pid: (typeof __clickId !== "undefined" ? __clickId : null) }); draw();
+    }
     if (state.pending.length < 3) {
-      toast(["Điểm 1/3 — nhấp tiếp.", "Điểm 2/3 — nhấp điểm cuối."][state.pending.length - 1] || "");
+      if (T === "compass" && state.pending.length === 1) toast("Đã chọn tâm — nhấp đoạn thẳng để lấy bán kính, hoặc nhấp 2 điểm.");
+      else toast(["Điểm 1/3 — nhấp tiếp.", "Điểm 2/3 — nhấp điểm cuối."][state.pending.length - 1] || "");
       return;
     }
     const [A, B, C] = state.pending; state.pending = [];
@@ -5237,16 +5981,23 @@ function handleToolClick(x, y, px, py) {
         const lu = Math.hypot(u.x, u.y) || 1, lw = Math.hypot(w.x, w.y) || 1;
         let dx = u.x / lu + w.x / lw, dy = u.y / lu + w.y / lw;
         if (Math.hypot(dx, dy) < 1e-9) { dx = -u.y / lu; dy = u.x / lu; }
+        const h0 = state.history.length;
+        const p1 = mmEnsureControlPoint(A), p2 = mmEnsureControlPoint(B), p3 = mmEnsureControlPoint(C);
         const o = addObject(lineExprThrough(B.x, B.y, dx, dy));
-        if (o && A._pid && B._pid && C._pid) mmAttachParents(o, [A._pid, B._pid, C._pid], { type: "bisector", p1: A._pid, p2: B._pid, p3: C._pid });
+        if (o && p1 && p2 && p3) mmAttachParents(o, [p1, p2, p3], { type: "bisector", p1, p2, p3 });
+        mmCollapseBatch(h0);
         toast(`Phân giác: ${o.name}.`, "ok");
       } else if (T === "arc" || T === "sector") {
-        const r = Math.hypot(A.x - B.x, A.y - B.y);
+        // Thứ tự: Tâm (A) -> Điểm đầu (B) -> Điểm cuối (C), khớp hint "tâm + đầu + cuối".
+        const r = Math.hypot(B.x - A.x, B.y - A.y);
         if (r < 1e-9) throw new Error("Bán kính quá nhỏ.");
-        const a0 = Math.atan2(A.y - B.y, A.x - B.x) * 180 / Math.PI;
-        const a1 = Math.atan2(C.y - B.y, C.x - B.x) * 180 / Math.PI;
-        const o = addObject(`${T}(${R(B.x)},${R(B.y)},${R(r)},${R(a0)},${R(a1)})`);
-        if (o && A._pid && B._pid && C._pid) mmAttachParents(o, [A._pid, B._pid, C._pid], { type: T, cId: B._pid, sId: A._pid, eId: C._pid });
+        const h0 = state.history.length;
+        const cId = mmEnsureControlPoint(A), sId = mmEnsureControlPoint(B), eId = mmEnsureControlPoint(C);
+        const a0 = Math.atan2(B.y - A.y, B.x - A.x) * 180 / Math.PI;
+        const a1 = Math.atan2(C.y - A.y, C.x - A.x) * 180 / Math.PI;
+        const o = addObject(`${T}(${R(A.x)},${R(A.y)},${R(r)},${R(a0)},${R(a1)})`);
+        if (o && cId && sId && eId) mmAttachParents(o, [cId, sId, eId], { type: T, cId, sId, eId });
+        mmCollapseBatch(h0);
         toast(`${T === "arc" ? "Cung tròn" : "Hình quạt"}: ${o.name}.`, "ok");
       } else if (T === "ellipse") {
         const d1 = Math.hypot(C.x - A.x, C.y - A.y), d2 = Math.hypot(C.x - B.x, C.y - B.y);
@@ -5255,8 +6006,11 @@ function handleToolClick(x, y, px, py) {
         const b = Math.sqrt(a * a - c2 * c2);
         const cx = (A.x + B.x) / 2, cy = (A.y + B.y) / 2;
         const rot = Math.atan2(B.y - A.y, B.x - A.x) * 180 / Math.PI;
+        const h0 = state.history.length;
+        const f1 = mmEnsureControlPoint(A), f2 = mmEnsureControlPoint(B), pId = mmEnsureControlPoint(C);
         const o = addObject(`ellipse(${R(cx)},${R(cy)},${R(a)},${R(b)},${R(rot)})`);
-        if (o && A._pid && B._pid && C._pid) mmAttachParents(o, [A._pid, B._pid, C._pid], { type: "ellipse", f1: A._pid, f2: B._pid, pId: C._pid });
+        if (o && f1 && f2 && pId) mmAttachParents(o, [f1, f2, pId], { type: "ellipse", f1, f2, pId });
+        mmCollapseBatch(h0);
         toast(`Elíp: ${o.name}.`, "ok");
       } else if (T === "parabola") {
         const dx = C.x - B.x, dy = C.y - B.y, l2 = dx * dx + dy * dy;
@@ -5264,8 +6018,11 @@ function handleToolClick(x, y, px, py) {
         const l = Math.sqrt(l2), nx = -dy / l, ny = dx / l;
         const cc = -(nx * B.x + ny * B.y);
         const F = `(x-${R(A.x)})^2+(y-${R(A.y)})^2-(${R(nx)}*x+${R(ny)}*y+${R(cc)})^2`;
+        const h0 = state.history.length;
+        const fId = mmEnsureControlPoint(A), d1 = mmEnsureControlPoint(B), d2 = mmEnsureControlPoint(C);
         const o = addObject(`${F} = 0`);
-        if (o && A._pid && B._pid && C._pid) mmAttachParents(o, [A._pid, B._pid, C._pid], { type: "parabola", fId: A._pid, d1: B._pid, d2: C._pid });
+        if (o && fId && d1 && d2) mmAttachParents(o, [fId, d1, d2], { type: "parabola", fId, d1, d2 });
+        mmCollapseBatch(h0);
         toast(`Parabôn: ${o.name}.`, "ok");
       } else if (T === "hyperbola") {
         const d1 = Math.hypot(C.x - A.x, C.y - A.y), d2 = Math.hypot(C.x - B.x, C.y - B.y);
@@ -5274,43 +6031,58 @@ function handleToolClick(x, y, px, py) {
         const b = Math.sqrt(c2 * c2 - a * a);
         const cx = (A.x + B.x) / 2, cy = (A.y + B.y) / 2;
         const rot = Math.atan2(B.y - A.y, B.x - A.x) * 180 / Math.PI;
+        const h0 = state.history.length;
+        const f1 = mmEnsureControlPoint(A), f2 = mmEnsureControlPoint(B), pId = mmEnsureControlPoint(C);
         const o = addObject(`hyperbola(${R(cx)},${R(cy)},${R(a)},${R(b)},${R(rot)})`);
-        if (o && A._pid && B._pid && C._pid) mmAttachParents(o, [A._pid, B._pid, C._pid], { type: "hyperbola", f1: A._pid, f2: B._pid, pId: C._pid });
+        if (o && f1 && f2 && pId) mmAttachParents(o, [f1, f2, pId], { type: "hyperbola", f1, f2, pId });
+        mmCollapseBatch(h0);
         toast(`Hypebôn: ${o.name}.`, "ok");
       } else if (T === "angle") {
+        const h0 = state.history.length;
+        const p1 = mmEnsureControlPoint(A), p2 = mmEnsureControlPoint(B), p3 = mmEnsureControlPoint(C);
         const o = addObject(`angle(${R(A.x)},${R(A.y)},${R(B.x)},${R(B.y)},${R(C.x)},${R(C.y)})`);
-        if (o && A._pid && B._pid && C._pid) mmAttachParents(o, [A._pid, B._pid, C._pid], { type: "angle", p1: A._pid, p2: B._pid, p3: C._pid });
+        if (o && p1 && p2 && p3) mmAttachParents(o, [p1, p2, p3], { type: "angle", p1, p2, p3 });
+        mmCollapseBatch(h0);
         toast(`Góc ${o.name}: ${R(angleDegOf(o).deg)}°.`, "ok");
       } else if (T === "compass") {
         const r = Math.hypot(C.x - B.x, C.y - B.y);
         if (r < 1e-9) throw new Error("Bán kính quá nhỏ.");
+        const h0 = state.history.length;
+        const cId = mmEnsureControlPoint(A), r1 = mmEnsureControlPoint(B), r2 = mmEnsureControlPoint(C);
         const o = addObject(`(x - ${R(A.x)})^2 + (y - ${R(A.y)})^2 = ${R(r * r)}`);
         o.cx = R(A.x); o.cy = R(A.y); o.cr = R(r);
-        if (A._pid && B._pid && C._pid) mmAttachParents(o, [A._pid, B._pid, C._pid], { type: "compass", cId: A._pid, r1: B._pid, r2: C._pid });
+        if (cId && r1 && r2) mmAttachParents(o, [cId, r1, r2], { type: "compass", cId, r1, r2 });
         else mmAttachParents(o, [], { type: "compass" });
         persist();
+        mmCollapseBatch(h0);
         toast(`Compa: ${o.name}.`, "ok");
       } else if (T === "circle3") {
         let cc;
         try { cc = mmCircumcenter(A.x, A.y, B.x, B.y, C.x, C.y); }
         catch (e) { toast(e.message, "err"); draw(); return; }
+        const h0 = state.history.length;
+        const p1 = mmEnsureControlPoint(A), p2 = mmEnsureControlPoint(B), p3 = mmEnsureControlPoint(C);
         const r = Math.hypot(A.x - cc.x, A.y - cc.y);
         const o = addObject(`(x - ${R(cc.x)})^2 + (y - ${R(cc.y)})^2 = ${R(r * r)}`);
         o.cx = R(cc.x); o.cy = R(cc.y); o.cr = R(r);
-        if (A._pid && B._pid && C._pid) mmAttachParents(o, [A._pid, B._pid, C._pid], { type: "circle3", p1: A._pid, p2: B._pid, p3: C._pid });
+        if (p1 && p2 && p3) mmAttachParents(o, [p1, p2, p3], { type: "circle3", p1, p2, p3 });
         else mmAttachParents(o, [], { type: "circle3" });
         persist();
+        mmCollapseBatch(h0);
         toast(`Đường tròn qua 3 điểm: ${o.name}.`, "ok");
       } else if (T === "arc3" || T === "sector3") {
         let cc;
         try { cc = mmCircumcenter(A.x, A.y, B.x, B.y, C.x, C.y); }
         catch (e) { toast(e.message, "err"); draw(); return; }
+        const h0 = state.history.length;
+        const p1 = mmEnsureControlPoint(A), p2 = mmEnsureControlPoint(B), p3 = mmEnsureControlPoint(C);
         const r = Math.hypot(A.x - cc.x, A.y - cc.y);
         const kind = T === "arc3" ? "arc" : "sector";
         const a0 = Math.atan2(A.y - cc.y, A.x - cc.x) * 180 / Math.PI;
         const a1 = Math.atan2(C.y - cc.y, C.x - cc.x) * 180 / Math.PI;
         const o = addObject(`${kind}(${R(cc.x)},${R(cc.y)},${R(r)},${R(a0)},${R(a1)})`);
-        if (o && A._pid && B._pid && C._pid) mmAttachParents(o, [A._pid, B._pid, C._pid], { type: T, p1: A._pid, p2: B._pid, p3: C._pid });
+        if (o && p1 && p2 && p3) mmAttachParents(o, [p1, p2, p3], { type: T, p1, p2, p3 });
+        mmCollapseBatch(h0);
         toast(`${T === "arc3" ? "Cung qua 3 điểm" : "Quạt qua 3 điểm"}: ${o.name}.`, "ok");
       }
     } catch (e) { toast(e.message, "err"); }
@@ -5320,14 +6092,16 @@ function handleToolClick(x, y, px, py) {
   if (T === "pointon") {
     const hit = nearestObject(px, py);
     const ref = hit ? hit.obj : null;
-    const okRef = ref && ["segment", "ray", "vector", "fn", "vline", "implicit", "arc", "sector", "ellipse", "polygon"].includes(ref.kind);
+    const okRef = ref && ["segment", "ray", "vector", "fn", "vline", "implicit", "arc", "sector", "ellipse", "polygon", "polyline"].includes(ref.kind);
     if (!okRef) { toast("Nhấp lên một đường / hình để đặt điểm thuộc.", "err"); return; }
     const q = mmProjectToObj(x, y, ref);
     if (!q || !isFinite(q.x)) { toast("Không chiếu được lên đối tượng này.", "err"); return; }
     try {
       const o = markPoint(q.x, q.y, "#38bdf8");
-      mmAttachParents(o, [ref.id], { type: "pointon", refId: ref.id });
-      toast(`Điểm thuộc ${ref.name} — kéo ${ref.name} để kiểm tra.`, "ok");
+      const prm = mmCurveParamOf(ref, q.x, q.y);
+      mmAttachParents(o, [ref.id], { type: "pointon", refId: ref.id, ...prm });
+      const tag = prm.theta != null ? ` · θ=${Math.round(prm.theta * 180 / Math.PI)}°` : (prm.t != null ? ` · t=${Math.round(prm.t * 100) / 100}` : "");
+      toast(`Điểm thuộc ${ref.name}${tag} — kéo điểm để trượt dọc hình.`, "ok");
     } catch (e) { toast(e.message, "err"); }
     draw(); return;
   }
@@ -5352,16 +6126,17 @@ function handleToolClick(x, y, px, py) {
     if (!pt) { draw(); return; }
     const hit = nearestObject(px, py);
     const ref = hit ? hit.obj : null;
-    const okRef = ref && ref.id !== pt.id && ["segment", "ray", "vector", "fn", "vline", "implicit", "arc", "sector", "ellipse", "polygon"].includes(ref.kind);
+    const okRef = ref && ref.id !== pt.id && ["segment", "ray", "vector", "fn", "vline", "implicit", "arc", "sector", "ellipse", "polygon", "polyline"].includes(ref.kind);
     if (!okRef) { draw(); toast("Cần nhấp lên một đường / hình để dính.", "err"); return; }
     try {
       const q = mmProjectToObj(pt.x, pt.y, ref) || { x: pt.x, y: pt.y };
       pushHistory();
       pt.x = R(q.x); pt.y = R(q.y);
       mmSyncPointNameExpr(pt);
-      mmAttachParents(pt, [ref.id], { type: "attach", refId: ref.id });
+      const prmA = mmCurveParamOf(ref, q.x, q.y);
+      mmAttachParents(pt, [ref.id], { type: "attach", refId: ref.id, ...prmA });
       renderList($("#algebraSearch").value); draw(); persist();
-      toast(`Đã dính ${pt.name} vào ${ref.name}.`, "ok");
+      toast(`Đã dính ${pt.name} vào ${ref.name} — kéo điểm để trượt dọc hình.`, "ok");
     } catch (e) { draw(); toast(e.message, "err"); }
     return;
   }
@@ -5376,8 +6151,11 @@ function handleToolClick(x, y, px, py) {
     const dx = B.x - A.x, dy = B.y - A.y;
     if (Math.hypot(dx, dy) < 1e-9) { toast("Hai điểm định hướng trùng nhau.", "err"); draw(); return; }
     try {
+      const h0 = state.history.length;
+      const d1 = mmEnsureControlPoint(A), d2 = mmEnsureControlPoint(B), oId = mmEnsureControlPoint(O);
       const o = addObject(`vector(${R(O.x)},${R(O.y)},${R(O.x + dx)},${R(O.y + dy)})`);
-      if (o && A._pid && B._pid && O._pid) mmAttachParents(o, [A._pid, B._pid, O._pid], { type: "vecfrom", d1: A._pid, d2: B._pid, oId: O._pid });
+      if (o && d1 && d2 && oId) mmAttachParents(o, [d1, d2, oId], { type: "vecfrom", d1, d2, oId });
+      mmCollapseBatch(h0);
       toast(`Véc-tơ từ điểm: ${o.name} (giữ hướng/độ lớn).`, "ok");
     } catch (e) { toast(e.message, "err"); }
     draw(); return;
@@ -5390,12 +6168,15 @@ function handleToolClick(x, y, px, py) {
     const [A, B] = state.pending; state.pending = [];
     const dx = B.x - A.x, dy = B.y - A.y;
     try {
+      const h0 = state.history.length;
+      const v1 = mmEnsureControlPoint(A), v2 = mmEnsureControlPoint(B);
       const pts = base.pts.map(q => `(${R(q[0] + dx)},${R(q[1] + dy)})`);
       const o = addObject(`polygon(${pts.join(",")})`);
       const ids = [base.id];
       const def = { type: "vecpoly", polyId: base.id, dx: R(dx), dy: R(dy) };
-      if (A._pid && B._pid) { ids.push(A._pid, B._pid); def.v1 = A._pid; def.v2 = B._pid; }
+      if (v1 && v2) { ids.push(v1, v2); def.v1 = v1; def.v2 = v2; }
       mmAttachParents(o, ids, def);
+      mmCollapseBatch(h0);
       toast(`Đa giác véc-tơ: ${o.name} = ${base.name} + véc-tơ.`, "ok");
     } catch (e) { toast(e.message, "err"); }
     draw(); return;
@@ -5493,7 +6274,40 @@ function handleToolClick(x, y, px, py) {
     toast(`Đỉnh ${state.pending.length} — nhấp điểm đầu để khép / Enter để xong.`);
     return;
   }
-  /* --- còn lại: polar… nâng cao --- */
+  /* --- đường gấp khúc (mở): như đa giác nhưng KHÔNG khép, Enter/nhấp đúp để xong --- */
+  if (T === "polyline") {
+    state.pending.push({ x, y, _pid: (typeof __clickId !== "undefined" ? __clickId : null) }); draw();
+    toast(`Điểm ${state.pending.length} — Enter / nhấp đúp để xong.`);
+    return;
+  }
+  /* --- cực / đường kính (Polar): chọn đường tròn ở Đại số rồi nhấp 1 cực điểm --- */
+  if (T === "polar") {
+    const sel = state.objects.find(o => o.id === state.selectedId && o.kind === "implicit" && !o.error)
+      || state.objects.find(o => o.kind === "implicit" && o.visible && !o.error && (o.cx !== undefined || mmCircleMetaOf(o.expr || "")));
+    if (!sel) { toast("Hãy chọn một đường tròn trong danh sách Đại số trước.", "err"); return; }
+    const meta = (sel.cx !== undefined) ? { cx: sel.cx, cy: sel.cy, r: sel.cr } : mmCircleMetaOf(sel.expr || "");
+    if (!meta || !(meta.r > 0)) { toast("Đối tượng đã chọn không phải đường tròn.", "err"); return; }
+    try {
+      const h0 = state.history.length;
+      const pId = mmEnsureControlPoint({ x, y, _pid: (typeof __clickId !== "undefined" ? __clickId : null) });
+      const dx = x - meta.cx, dy = y - meta.cy, d = Math.hypot(dx, dy);
+      if (d < 1e-9) throw new Error("Cực điểm trùng tâm — suy biến.");
+      let o;
+      if (d < meta.r - 1e-9) {
+        o = addObject(lineExprThrough(meta.cx, meta.cy, dx, dy), { color: "#fbbf24" });
+      } else {
+        const th = Math.atan2(dy, dx), be = Math.acos(clamp(meta.r / d, -1, 1));
+        const t1x = meta.cx + meta.r * Math.cos(th + be), t1y = meta.cy + meta.r * Math.sin(th + be);
+        const t2x = meta.cx + meta.r * Math.cos(th - be), t2y = meta.cy + meta.r * Math.sin(th - be);
+        o = addObject(lineExprThrough(t1x, t1y, t2x - t1x, t2y - t1y), { color: "#fbbf24" });
+      }
+      if (o && pId) mmAttachParents(o, [sel.id, pId], { type: "polar", circleId: sel.id, pId });
+      mmCollapseBatch(h0);
+      toast(`Cực/đường kính của ${sel.name}: ${o.name}.`, "ok");
+    } catch (e) { toast(e.message, "err"); }
+    return;
+  }
+  /* --- còn lại: locus / polar… nâng cao --- */
   toast("Công cụ này là CAS nâng cao — hãy dùng Markus hoặc dựng tay.", undefined);
 }
 
@@ -5505,11 +6319,13 @@ const TOOL_HINTS = {
   line: "Đường thẳng: nhấp 2 điểm.", circle: "Đường tròn: nhấp tâm rồi điểm vành.",
   segment: "Đoạn thẳng: nhấp 2 đầu.", ray: "Tia: nhấp gốc rồi điểm định hướng.",
   vector: "Véc-tơ: nhấp điểm đặt rồi ngọn.", regression: "Hồi quy: nhấp nhiều điểm, Enter xong.",
+  polyline: "Đường gấp khúc: nhấp các điểm, Enter / nhấp đúp để xong.", polar: "Cực/đường kính: chọn đường tròn ở Đại số, nhấp 1 cực điểm.",
   fixedseg: "Đoạn cố định: nhấp gốc rồi nhập dài + góc.",
   midpoint: "Trung điểm: nhấp 2 điểm.", perp: "Vuông góc: chọn đường ở Đại số, nhấp 1 điểm.",
   midperp: "Trung trực: nhấp 2 điểm.", parallel: "Song song: chọn đường ở Đại số, nhấp 1 điểm.",
   bisector: "Phân giác: nhấp 3 điểm (đỉnh giữa).", tangent: "Tiếp tuyến: chọn đường, nhấp điểm chạm.",
-  compass: "Compa: tâm + 2 điểm định bán kính.", semicircle: "Bán nguyệt: 2 đầu đường kính.",
+  compass: "Compa: nhấp tâm, rồi nhấp đoạn thẳng (lấy bán kính) hoặc 2 điểm.", semicircle: "Bán nguyệt: 2 đầu đường kính.",
+  circleCR: "Tròn tâm+R: nhấp tâm rồi nhập bán kính.",
   arc: "Cung tròn: tâm + đầu + cuối.", sector: "Hình quạt: tâm + đầu + cuối.",
   ellipse: "Elíp: 2 tiêu điểm + 1 điểm.", parabola: "Parabôn: tiêu điểm + 2 điểm chuẩn.",
   hyperbola: "Hypebôn: 2 tiêu điểm + 1 điểm.", conic5: "Cônic: nhấp 5 điểm.",
@@ -5535,8 +6351,8 @@ const TOOL_HINTS = {
   circle3: "Tròn qua 3 điểm: nhấp 3 điểm không thẳng hàng.",
   arc3: "Cung qua 3 điểm.", sector3: "Quạt qua 3 điểm.",
   refpointline: "ĐX điểm qua đường: nhấp điểm rồi nhấp lên đường.",
-  "m3d-move": "Di chuyển 3D: kéo để xoay, Shift+kéo để pan, lăn chuột zoom.",
-  "m3d-point": "Điểm 3D: nhấp lên nền (snap điểm tím khi gần).",
+  "m3d-move": "Di chuyển 3D: kéo để xoay, Shift+kéo để pan, lăn chuột zoom. Kéo điểm + giữ Shift/Alt để nâng Z.",
+  "m3d-point": "Điểm 3D: nhấp lên nền (snap điểm tím khi gần). Shift+nhấp để giữ độ cao Z hiện tại.",
   "m3d-pointon": "Điểm thuộc 3D: nhấp lên đoạn/đường/mặt/cầu/khối.",
   "m3d-midpoint": "Trung điểm 3D: nhấp 2 điểm.",
   "m3d-segment": "Đoạn 3D: nhấp 2 điểm.", "m3d-line": "Đường 3D: nhấp 2 điểm.",
@@ -5645,7 +6461,7 @@ function bindChrome() {
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Enter") return;
     if (e.target && e.target.closest && e.target.closest("input,textarea,select,.mm-modal")) return;
-    if (["polygon", "oriented", "plist", "regression"].includes(state.tool) && state.pending.length) {
+    if (["polygon", "oriented", "polyline", "plist", "regression"].includes(state.tool) && state.pending.length) {
       e.preventDefault(); finishPending();
     } else if (state.tool === "m3d-polygon" && state.pending.length) {
       e.preventDefault(); mmFinishPoly3D();
@@ -5836,7 +6652,48 @@ function bindChrome() {
     toast("Chế độ trình bày: khung nhìn chuẩn, lưới rõ, chữ lớn.", "ok");
   });
   $("#avatarBtn").addEventListener("click", () => toast("Mind Math — phiên bản trình diễn KHKT (lưu cục bộ)."));
-  $("#menuBtn").addEventListener("click", () => toast("Menu: Hồ sơ, Mở/Lưu, Xuất ảnh PNG (bản trình diễn)."));
+  // Menu header: click ☰ hiện dropdown, trong đó có Trang chủ
+  const menuBtn = $("#menuBtn"), menuDrop = $("#menuDropdown");
+  const setMenuOpen = (open) => {
+    if (!menuDrop || !menuBtn) return;
+    menuDrop.hidden = !open;
+    menuBtn.setAttribute("aria-expanded", open ? "true" : "false");
+  };
+  if (menuBtn && menuDrop) {
+    menuBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      setMenuOpen(menuDrop.hidden);
+    });
+    document.addEventListener("click", (e) => {
+      if (menuDrop.hidden) return;
+      if (e.target.closest && (e.target.closest("#menuDropdown") || e.target.closest("#menuBtn"))) return;
+      setMenuOpen(false);
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && !menuDrop.hidden) setMenuOpen(false);
+    });
+    $$("#menuDropdown [data-menu]").forEach(b => b.addEventListener("click", () => {
+      const k = b.dataset.menu;
+      setMenuOpen(false);
+      if (k === "home") { showHomePage(); return; }
+      if (k === "workspace") { hideHomePage({ focusWorkspace: true }); toast("Đã về Không gian làm việc.", "ok"); return; }
+      if (k === "profile") { toast("Mind Math — phiên bản trình diễn KHKT (lưu cục bộ)."); return; }
+      if (k === "save") { persist(); toast("Đã lưu workspace vào trình duyệt này.", "ok"); return; }
+      if (k === "export") {
+        try {
+          const a = document.createElement("a");
+          a.download = "mind-math.png";
+          a.href = canvas.toDataURL("image/png");
+          a.click();
+          toast("Đã xuất ảnh PNG.", "ok");
+        } catch { toast("Không xuất được ảnh trên trình duyệt này.", "err"); }
+        return;
+      }
+    }));
+    // logo brand cũng về Trang chủ cho đồng nhất
+    const brand = $(".brand");
+    if (brand) brand.addEventListener("click", (e) => { e.preventDefault(); showHomePage(); });
+  }
 
   // suggestions + feature demos
   $$("#suggestList button").forEach(b => b.addEventListener("click", () => {
@@ -5908,7 +6765,7 @@ function bindChrome() {
     });
   } catch {}
 
-  // table + sheet + settings
+  // table + settings
   $("#tableSelect").addEventListener("change", refreshTable);
   $("#setMinor").addEventListener("change", (e) => { state.opts.minor = e.target.checked; draw(); persist(); });
   $("#setLabels").addEventListener("change", (e) => { state.opts.labels = e.target.checked; draw(); persist(); });
@@ -6054,29 +6911,13 @@ function bindChrome() {
   const mkGear = $("#markusSettingsBtn"), mkSet = $("#markusSettings");
   if (mkGear) mkGear.addEventListener("click", () => { if (mkSet) mkSet.hidden = !mkSet.hidden; });
   /* Đọc toàn bộ ô cài đặt vào cfg (gọi trước mỗi lần gửi/test để không bao giờ dùng key cũ) */
-  const mkProv = $("#markusProvider"), mkEp = $("#markusEndpoint"), mkEpRow = $("#markusEndpointRow");
+  const mkProv = $("#markusProvider"), mkEp = $("#markusEndpoint");
   const mkModel = $("#markusModel"), mkKey = $("#markusKey");
-  const markusRefreshEpRow = () => {
-    if (mkEpRow) mkEpRow.hidden = (markusCfg.provider || "google") === "google";
-  };
-  markusRefreshEpRow();
+  markusRefreshConn();
   if (mkProv) {
-    mkProv.value = markusCfg.provider || "google";
-    mkProv.addEventListener("change", () => {
-      const oldP = markusCfg.provider || "google";
-      const np = mkProv.value;
-      markusCfg.provider = np;
-      // đổi hãng mà model còn là default của hãng cũ -> gợi ý default hãng mới
-      if (!markusCfg.model || markusCfg.model === MARKUS_DEFAULT_MODEL[oldP]) {
-        markusCfg.model = MARKUS_DEFAULT_MODEL[np] || markusCfg.model;
-        if (mkModel) mkModel.value = markusCfg.model;
-      }
-      markusStore.saveCfg(markusCfg);
-      markusRefreshEpRow();
-      markusSetStatus(markusCfg.key ? "on" : "off", markusCfg.key ? "online · " + markusProviderLabel() : "offline");
-      toast("Markus dùng " + markusProviderLabel() + (np === "google" ? "" : " — model: " + markusCfg.model), "ok");
-    });
+    mkProv.addEventListener("change", () => markusSetProvider(mkProv.value));
   }
+  $$("#markusProvChips button").forEach(b => b.addEventListener("click", () => markusSetProvider(b.dataset.prov)));
   if (mkEp) {
     mkEp.value = markusCfg.endpoint || "";
     mkEp.addEventListener("change", () => {
@@ -6101,40 +6942,24 @@ function bindChrome() {
       const g = markusGuessProvider(k);
       if (k && g && g !== oldP) {
         markusCfg.provider = g;
-        if (!markusCfg.model || markusCfg.model === MARKUS_DEFAULT_MODEL[oldP]) {
+        if (!markusCfg.model || markusCfg.model === MARKUS_DEFAULT_MODEL[oldP])
           markusCfg.model = MARKUS_DEFAULT_MODEL[g];
-          if (mkModel) mkModel.value = markusCfg.model;
-        }
-        if (mkProv) mkProv.value = g;
-        markusRefreshEpRow();
+        markusStore.saveCfg(markusCfg);
+        markusRefreshConn();
         toast("Đã nhận key " + markusProviderLabel() + " — Markus trả lời ngay.", "ok");
       } else {
+        markusStore.saveCfg(markusCfg);
+        markusRefreshConn();
         toast(k ? "Đã lưu API key cho Markus." : "Đã xóa key — Markus chạy offline.", "ok");
       }
-      markusStore.saveCfg(markusCfg);
-      markusSetStatus(markusCfg.key ? "on" : "off", markusCfg.key ? "online · " + markusProviderLabel() : "offline");
     });
   }
   const mkShow = $("#markusKeyShow");
   if (mkShow) mkShow.addEventListener("click", () => { if (mkKey) mkKey.type = mkKey.type === "password" ? "text" : "password"; });
   const mkTest = $("#markusTestBtn");
-  if (mkTest) mkTest.addEventListener("click", async () => {
-    markusSyncCfgFromUI();
-    if (!markusCfg.key) { toast("Dán API key trước (Google/OpenAI/Grok/DeepSeek… hãng nào cũng được).", "err"); return; }
-    if ((markusCfg.provider || "google") !== "google" && !markusProviderBase()) {
-      toast("Nhập endpoint trong ⚙ trước (dạng https://…/v1).", "err"); return;
-    }
-    mkTest.textContent = "Đang kiểm tra…"; mkTest.disabled = true;
-    try {
-      const r = await markusCallAPI("Trả lời đúng một từ: OK");
-      markusSetStatus("on", "online · " + markusProviderLabel());
-      toast("Markus kết nối thành công (" + markusProviderLabel() + "): " + r.slice(0, 60), "ok");
-    } catch (e) {
-      markusSetStatus("off", "offline");
-      toast("Kết nối lỗi: " + e.message, "err");
-    }
-    mkTest.textContent = "Kiểm tra kết nối"; mkTest.disabled = false;
-  });
+  if (mkTest) mkTest.addEventListener("click", markusTestConn);
+  const mkConnTest = $("#markusConnTest");
+  if (mkConnTest) mkConnTest.addEventListener("click", markusTestConn);
   const mkClear = $("#markusClearBtn");
   if (mkClear) mkClear.addEventListener("click", () => {
     markusHist = []; markusStore.saveHist(markusHist); renderMarkusChat();
@@ -6145,7 +6970,6 @@ function bindChrome() {
     renderMarkusChat();
   }));
 
-  buildSheet();
   window.addEventListener("resize", () => { draw(); drawTrigCircle(); });
 }
 
@@ -6213,48 +7037,6 @@ function refreshTable() {
     tr.innerHTML = `<td>${round2(x)}</td><td>${isFinite(y) ? round2(y) : "—"}</td>`;
     tb.appendChild(tr);
   }
-}
-
-/* ---------------- mini sheet ---------------- */
-const sheetData = Array.from({ length: 6 }, () => Array(3).fill(""));
-function sheetEval(expr, depth = 0) {
-  if (depth > 8) return NaN;
-  let s = String(expr).trim();
-  if (!s.startsWith("=")) { const n = parseFloat(s); return s === "" ? "" : (isNaN(n) ? s : n); }
-  s = s.slice(1);
-  s = s.replace(/([A-C])([1-6])/g, (m, c, r) => {
-    const v = sheetEval(sheetData[+r - 1][c.charCodeAt(0) - 65], depth + 1);
-    return typeof v === "number" ? `(${v})` : "0";
-  });
-  try { return makeFn(compileScalar(s), ["x"])(0); } catch { return "⊥"; }
-}
-function buildSheet() {
-  const tb = $("#sheetTable tbody"); tb.innerHTML = "";
-  sheetData.forEach((row, r) => {
-    const tr = document.createElement("tr");
-    tr.innerHTML = `<td style="color:var(--dim)">${r + 1}</td>`;
-    row.forEach((val, c) => {
-      const td = document.createElement("td");
-      const inp = document.createElement("input");
-      inp.value = val; inp.placeholder = "—";
-      inp.addEventListener("change", () => { sheetData[r][c] = inp.value; refreshSheetHints(); });
-      inp.addEventListener("focus", () => inp.select());
-      td.appendChild(inp); tr.appendChild(td);
-    });
-    tb.appendChild(tr);
-  });
-  sheetData[0][0] = "2"; sheetData[1][0] = "3"; sheetData[0][1] = "=A1*2+sin(A2)";
-  syncSheetInputs();
-}
-function syncSheetInputs() {
-  $$("#sheetTable tbody tr").forEach((tr, r) => {
-    $$("input", tr).forEach((inp, c) => { inp.value = sheetData[r][c]; inp.title = String(sheetEval(sheetData[r][c])); });
-  });
-}
-function refreshSheetHints() {
-  $$("#sheetTable tbody tr").forEach((tr, r) => {
-    $$("input", tr).forEach((inp, c) => { inp.title = String(sheetEval(inp.value)); });
-  });
 }
 
 /* ============================================================================
@@ -6585,12 +7367,60 @@ function refreshMarkusContext() {
   const el = $("#markusContext");
   if (el) el.textContent = "◉ " + markusContextText();
 }
-function markusSetStatus(mode, label) {
-  const el = $("#markusStatus");
-  if (!el) return;
-  el.classList.toggle("off", mode === "off");
-  el.innerHTML = `<i></i>${escapeHtml(label)}`;
-  try { el.title = String(label || ""); } catch {}
+/* Vẽ lại thẻ trạng thái trong panel API: chấm xanh/đỏ, hãng · model · key •••• */
+function markusRefreshConn() {
+  try {
+    const hasKey = !!(markusCfg.key || "").trim();
+    const dot = $("#markusConnDot"), st = $("#markusConnState"), sub = $("#markusConnSub");
+    if (dot) dot.classList.toggle("off", !hasKey);
+    if (st) st.textContent = hasKey ? "Sẵn sàng" : "Offline";
+    if (sub) {
+      const tail = hasKey ? String(markusCfg.key).trim().slice(-4) : "";
+      sub.textContent = hasKey
+        ? `${markusProviderLabel()} · ${markusCfg.model} · ••••${tail}`
+        : "Chưa có API key — vẫn dùng tốt";
+    }
+    $$("#markusProvChips button").forEach(b =>
+      b.classList.toggle("is-active", b.dataset.prov === (markusCfg.provider || "google")));
+    const pv = $("#markusProvider"); if (pv) pv.value = markusCfg.provider || "google";
+    const md = $("#markusModel"); if (md && markusCfg.model) md.value = markusCfg.model;
+    const er = $("#markusEndpointRow"); if (er) er.hidden = (markusCfg.provider || "google") === "google";
+    const ep = $("#markusEndpoint");
+    if (ep) ep.placeholder = (MARKUS_PROVIDERS[markusCfg.provider] || {}).base || "https://…/v1";
+  } catch {}
+}
+/* Đổi máy chủ (dùng chung cho select + chips đổi nhanh + tự đoán từ key) */
+function markusSetProvider(np, silent) {
+  if (!MARKUS_PROVIDERS[np]) return;
+  const oldP = markusCfg.provider || "google";
+  markusCfg.provider = np;
+  if (!markusCfg.model || markusCfg.model === MARKUS_DEFAULT_MODEL[oldP])
+    markusCfg.model = MARKUS_DEFAULT_MODEL[np] || markusCfg.model;
+  markusStore.saveCfg(markusCfg);
+  markusRefreshConn();
+  if (!silent) toast("Markus dùng " + markusProviderLabel() + (np === "google" ? "" : " — model: " + markusCfg.model), "ok");
+}
+/* Kiểm tra kết nối (dùng chung cho cả 2 nút Kiểm tra) */
+async function markusTestConn() {
+  markusSyncCfgFromUI();
+  if (!markusCfg.key) { toast("Dán API key trước (Google/OpenAI/Grok/DeepSeek… hãng nào cũng được).", "err"); return; }
+  if ((markusCfg.provider || "google") !== "google" && !markusProviderBase()) {
+    toast("Nhập endpoint trong ⚙ trước (dạng https://…/v1).", "err"); return;
+  }
+  const t1 = $("#markusTestBtn"), t2 = $("#markusConnTest");
+  [t1, t2].forEach(b => { if (b) b.disabled = true; });
+  if (t1) t1.textContent = "Đang kiểm tra…";
+  if (t2) t2.textContent = "…";
+  try {
+    const r = await markusCallAPI("Trả lời đúng một từ: OK");
+    toast("Markus kết nối thành công (" + markusProviderLabel() + "): " + r.slice(0, 60), "ok");
+  } catch (e) {
+    toast("Kết nối lỗi: " + e.message, "err");
+  }
+  markusRefreshConn();
+  if (t1) t1.textContent = "Kiểm tra kết nối";
+  if (t2) t2.textContent = "Kiểm tra";
+  [t1, t2].forEach(b => { if (b) b.disabled = false; });
 }
 /* Đọc key/model/provider/endpoint hiện trên ô nhập vào cfg (tránh dùng key cũ
    khi người dùng dán key xong bấm gửi ngay mà chưa blur khỏi ô nhập). */
@@ -6752,7 +7582,7 @@ function asciiToLatex(s) {
   // tên hàm chuẩn -> lệnh LaTeX (chạy sau asin/log10 để không đè)
   t = t.replace(/\b(sin|cos|tan|cot|sec|csc|sinh|cosh|tanh|ln|log|exp|min|max|det|gcd|deg|lim|sup|inf)\s*\(/gi, "\\$1(");
   // khối 3D / hình: \text để đứng chữ
-  t = t.replace(/\b(cube|box|sphere|cyl|cone|pyramid|square|rect|disk|tri|polygon)\s*\(/gi, "\\text{$1}(");
+  t = t.replace(/\b(cube|box|sphere|cyl|cone|pyramid|square|rect|disk|tri|polygon|polyline)\s*\(/gi, "\\text{$1}(");
   t = t.replace(/\bpi\b/gi, "\\pi");
   t = t.replace(/\bInfinity\b/g, "\\infty");
   t = t.replace(/<=/g, "\\le ").replace(/>=/g, "\\ge ").replace(/!=/g, "\\ne ");
@@ -6940,7 +7770,7 @@ function markusProviderBase() {
 }
 function markusSystemPrompt() {
   return `Bạn là Markus, trợ lý toán học tiếng Việt bên trong phần mềm Mind Math (đồ thị 2D/3D, ` +
-    `đường tròn lượng giác, bảng giá trị, trang tính). Trả lời NGẮN GỌN, đúng trọng tâm, tiếng Việt. ` +
+    `đường tròn lượng giác, bảng giá trị). Trả lời NGẮN GỌN, đúng trọng tâm, tiếng Việt. ` +
     `Bối cảnh đồ thị hiện tại: ${markusContextText()} ` +
     `QUY TẮC CÔNG THỨC (bắt buộc): mọi công thức toán phải dùng LaTeX chuẩn để app render đẹp: ` +
     `$...$ cho công thức trong dòng (ví dụ $2\\\\cos a\\\\sin\\\\frac{b}{2}$), $$...$$ cho công thức trưng bày riêng một dòng. ` +
@@ -7174,15 +8004,15 @@ async function markusSend(text) {
   let reply, offline = false;
   if (!markusCfg.key) {
     reply = markusOfflineReply(raw); offline = true;
-    markusSetStatus("off", "offline");
+    markusRefreshConn();
   } else {
     try {
       reply = await markusCallAPI(raw);
-      markusSetStatus("on", "online · " + markusProviderLabel());
+      markusRefreshConn();
     } catch (e) {
       reply = `⚠️ Gọi ${markusProviderLabel()} lỗi (${e.message}). Tôi trả lời offline nhé:\n\n` + markusOfflineReply(raw);
       offline = true;
-      markusSetStatus("off", "offline");
+      markusRefreshConn();
     }
   }
   think.remove();
@@ -7733,7 +8563,13 @@ function mmRecomputeIntersect(o, D, Pget) {
   return false;
 }
 /* ---------------- RENDER 3D quan hệ ---------------- */
-function mmIsOrbiting() { return !!(interact.orbit || (interact.drag && interact.drag.active)); }
+function mmIsOrbiting() {
+  try {
+    if (interact.orbit || interact.pinch) return true;
+    if (typeof mmSpinRaf !== "undefined" && mmSpinRaf) return true;
+  } catch {}
+  return !!(interact.drag && interact.drag.active);
+}
 function mmStrokeSeg3D(A, B) {
   const a = proj3(A[0], A[1], A[2]), b = proj3(B[0], B[1], B[2]);
   ctx.beginPath(); ctx.moveTo(a.sx, a.sy); ctx.lineTo(b.sx, b.sy); ctx.stroke();
@@ -8183,8 +9019,26 @@ function mmDraw3DToolPreview() {
   } catch {}
 }
 /* ---------------- PICK + SNAP 3D ---------------- */
-function mmResolveClick3D(px, py) {
-  // Ưu tiên Point3D (16px) > floor. Trả về {p:[x,y,z], id}
+/* Oz cho điểm 3D mới trên nền trống (sửa lỗi Oz luôn = 0):
+   WHAT: click thường -> z=0 như cũ (tương thích); Shift/Alt+click -> giữ độ cao
+   của điểm đang chọn, nếu không thì dùng độ cao nhớ lần trước (lastZ3d).
+   WHY: trước đây mọi click nền đều hardcode z=0 nên không bao giờ tạo được điểm cao. */
+function mmRememberZ3D(z) {
+  // chỉ nhớ vào state (persist dồn ở lần commit/drag-end gần nhất, tránh ghi localStorage mỗi frame)
+  if (isFinite(z)) state.lastZ3d = mmClamp(z, -50, 50);
+}
+function mmDefaultZ3D(e) {
+  if (e && (e.shiftKey || e.altKey)) {
+    try {
+      const cur = state.objects.find(o => o.id === state.selectedId);
+      if (cur && cur.kind === "point3d" && isFinite(cur.z)) return cur.z;
+    } catch {}
+    if (isFinite(state.lastZ3d)) return state.lastZ3d;
+  }
+  return 0;
+}
+function mmResolveClick3D(px, py, e) {
+  // Ưu tiên Point3D (16px) > mặt cong đang chọn > nền (Shift/Alt+click giữ độ cao).
   try {
     const h = (typeof hitTest3D === "function") ? hitTest3D(px, py) : null;
     if (h && h.obj) {
@@ -8197,6 +9051,7 @@ function mmResolveClick3D(px, py) {
     let z = 0;
     const sel = state.objects.find(o => o.id === state.selectedId && o.kind === "surface");
     if (sel) { try { const zz = sel.fn(fl.x, fl.y); if (isFinite(zz)) z = clamp(zz, -8, 8); } catch {} }
+    else z = mmDefaultZ3D(e);
     return { p: [fl.x, fl.y, z], id: null };
   } catch {}
   return { p: [0, 0, 0], id: null };
@@ -8856,6 +9711,7 @@ function seed() {
       Object.assign(state.view, saved.view || {});
       Object.assign(state.view3d, saved.view3d || {});
       Object.assign(state.opts, { theme: "light", mesh3d: true, spin3d: false, quality3d: 32, animate: true, animDur: 1.4 }, saved.opts || {});
+      if (isFinite(saved.lastZ3d)) state.lastZ3d = saved.lastZ3d;
       if (saved.mode === "3d" || saved.mode === "2d") state.mode = saved.mode;
       if (saved?.objects?.length) {
         state.objects = saved.objects.map(rehydrate);
@@ -8930,13 +9786,11 @@ try { drawTrigCircle(); } catch {}
 requestAnimationFrame(spinLoop);
 requestAnimationFrame(trigTick);
 try {
-  const _mkProv = $("#markusProvider"); if (_mkProv) _mkProv.value = markusCfg.provider || "google";
   const _mkEp = $("#markusEndpoint"); if (_mkEp) _mkEp.value = markusCfg.endpoint || "";
-  const _mkEpRow = $("#markusEndpointRow"); if (_mkEpRow) _mkEpRow.hidden = (markusCfg.provider || "google") === "google";
   const _mkModel = $("#markusModel"); if (_mkModel) _mkModel.value = markusCfg.model || MARKUS_DEFAULT_MODEL.google;
   const _mkKey = $("#markusKey"); if (_mkKey) _mkKey.value = markusCfg.key || "";
   renderMarkusChat(); refreshMarkusContext();
-  markusSetStatus(markusCfg.key ? "on" : "off", markusCfg.key ? "online · " + markusProviderLabel() : "offline");
+  markusRefreshConn();
 } catch {}
 
 })();

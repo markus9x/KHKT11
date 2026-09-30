@@ -1,7 +1,7 @@
 # MIND MATH — Không gian Toán học khoa học (desktop)
 
 Workspace toán học tương tác kiểu GeoGebra: đại số, hình học phẳng quan hệ,
-đồ thị 2D/3D, lượng giác, bảng, trang tính và trợ lý AI **Markus** — sản phẩm gốc
+đồ thị 2D/3D, lượng giác, bảng giá trị và trợ lý AI **Markus** — sản phẩm gốc
 **Mind Math**, không dùng bất kỳ thương hiệu/logo bên ngoài nào.
 
 ## Chạy thử (không cần build)
@@ -21,7 +21,7 @@ fallback render nội bộ.
 |---|---|
 | `mind-math/index.html` | Khung workspace: header (Dark/Light + undo/redo), rail icon, panel đại số (ô nhập + xem trước công thức + bàn phím), panel công cụ 2 tab 2D/3D, sân khấu 2D/3D, feature cards, panel trợ lý + panel phải, sóng đáy |
 | `mind-math/styles.css` | Theme tím-indigo + `body[data-theme]`: Light = đồ thị nền trắng, Dark = nền đen; vuông góc kiểu GeoGebra, bo tròn chọn lọc; style cho theme-switch, mode-switch 2D/3D, view3d-bar, toolbar góc |
-| `mind-math/app.js` | Parser (unicode, `!`, `logb`, `nroot`, `ans`, bất phương trình) + engine 2D (pan/zoom/trace, marching squares) + engine 3D (mặt, khối, Net/khai triển, giao mặt, đo 3D) + hình học phẳng quan hệ (slider, conic5, biến hình) + vẽ dần + lượng giác + Markus + bảng/trang tính + undo/redo |
+| `mind-math/app.js` | Parser (unicode, `!`, `logb`, `nroot`, `ans`, bất phương trình) + engine 2D (pan/zoom/trace, marching squares) + engine 3D (mặt, khối, Net/khai triển, giao mặt, đo 3D) + hình học phẳng quan hệ (slider, conic5, biến hình) + vẽ dần + lượng giác + Markus + bảng giá trị + undo/redo |
 
 ## Tính năng chính (tiếng Việt)
 
@@ -30,7 +30,7 @@ fallback render nội bộ.
 - **Trung tâm 2D/3D:** nút chuyển **2D | 3D** góc trái đồ thị; toolbar dọc **góc phải-dưới** (con trỏ, ±zoom, fullscreen, home, cài đặt); HUD tọa độ + tỉ lệ; trace f(x).
 - **2D:** lưới, trục, nhãn, đường cong glow, điểm, `x=c`, ẩn `f(x,y)=0`, bất phương trình tô miền, đoạn/tia/véc-tơ, đa giác, cônic, góc, thanh trượt tham số.
 - **3D (cảm hứng GeoGebra 3D open-source):** hệ trục Oxyz màu (x đỏ, y xanh lá, z xanh dương), lưới nền Oxy, mặt `z=f(x,y)` tô sáng Lambert + lưới mesh, điểm 3D có chân chiếu, đường cong 2D dựng trên mặt `y=0`, đường mức trên nền. Kéo để xoay orbit, lăn chuột zoom, Shift+kéo để di chuyển, nút Góc chuẩn / Top / Lưới / Xoay tự động, chỉnh chi tiết 3D trong Cài đặt.
-- **Rail trái:** Đại số · Công cụ · Bảng · Trang tính · **Lượng giác** · **Markus AI** · Cài đặt.
+- **Rail trái:** Đại số · Công cụ · Bảng · **Lượng giác** · **Markus AI** · Cài đặt.
 - **Markus — trợ lý AI (điểm đột phá):** chat tiếng Việt ngay trong panel, thấy toàn bộ bối cảnh đồ thị (đối tượng, hàm đang chọn, góc α). Dán **bất kỳ API key nào** (Google, OpenAI, Grok, DeepSeek, OpenRouter…) là trả lời ngay — Google đi **Gemini native** (`generativelanguage.googleapis.com`, header `x-goog-api-key`, model mặc định `gemini-3.6-flash`), các hãng khác đi chuẩn **OpenAI** (`/chat/completions`, header Bearer, đổi máy chủ/endpoint/model trong ⚙, key `sk-`/`xai-` tự nhận máy chủ). Markus **tự vẽ lên đồ thị** qua khối ` ```mm ...``` ` (mỗi dòng 1 biểu thức). Mất mạng/key lỗi → **Markus offline** (engine toán nội bộ: phân tích nghiệm/cực trị + đánh dấu điểm, lượng giác, vẽ mẫu 3D, đố vui) nên demo KHKT không bao giờ chết. Key lưu ở `localStorage` — **xóa key trước khi public code**.
 - **Đường tròn lượng giác (R=1):** điểm M(cos α, sin α), cung α, hình chiếu sin/cos, trục tan (x=1) / cot (y=1), tam giác vuông, dấu 4 phần tư, sóng mini **sin/cos** (chuyển được), nhập **độ + radian song song (live)**, góc đặc biệt 0°–315° + dạng chính xác (π/6, √2/2…), quay tự động, kéo trực tiếp trên vòng tròn, nút **Vẽ dần vòng tròn**, nút vẽ riêng sin(x) / cos(x) lên đồ thị chính.
 - **Panel phải:** Hướng dẫn nhanh, Tính năng nổi bật, Gợi ý khám phá 2D (thu gọn/mở được).
@@ -63,7 +63,7 @@ fallback render nội bộ.
 - Mọi tool tạo object thật (undo/redo, save/load, kéo điểm gốc cập nhật qua `parents/def`).
 - **Quỹ tích là đường lấy mẫu (sampled polyline, 60–240 điểm), không phải symbolic exact** — driver phải là điểm dính trên đoạn/tròn/cung.
 - **3D Construction Engine (tab Công cụ → 3D, 45 tool, 9 nhóm):**
-- **Cơ bản:** Di chuyển (orbit), Điểm 3D (snap + Alt+kéo nâng Z), Điểm thuộc 3D, Trung điểm 3D.
+- **Cơ bản:** Di chuyển (orbit), Điểm 3D (snap + Shift/Alt+kéo nâng Z, Shift+nhấp giữ độ cao), Điểm thuộc 3D, Trung điểm 3D.
 - **Đường:** Đoạn / Đường / Tia / Véc-tơ / Véc-tơ từ điểm / Song song / Vuông góc 3D, Đa giác 3D (Enter chốt).
 - **Mặt phẳng:** qua 3 điểm (kèm phương trình ax+by+cz+d=0), song song, vuông góc — preview translucent.
 - **Tròn & cầu:** tròn tâm+điểm / tâm+R / qua 3 điểm; cầu tâm+điểm / tâm+R — orientation thật (basisU/V).
